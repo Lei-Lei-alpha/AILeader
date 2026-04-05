@@ -1,0 +1,10 @@
+# PCT prediction for AB2 alloys
+## Thermodynamics
+### Ideal PCT
+- SQS
+- slope
+- hysteresis
+### Simulating real structures 
+- Weighted SRO for slope
+
+## GCMC

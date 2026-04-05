@@ -7,7 +7,10 @@ import {
   Trash2,
   Menu,
   X,
-  BookOpen
+  BookOpen,
+  Plus,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import styles from './page.module.css';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
@@ -40,6 +43,12 @@ export default function Home() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newFolderPath, setNewFolderPath] = useState('');
+  
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [targetFolder, setTargetFolder] = useState('');
+  const [newNoteName, setNewNoteName] = useState('');
+  
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -93,6 +102,18 @@ export default function Home() {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const toggleFolder = (folder: string) => {
+    setCollapsedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folder)) {
+        next.delete(folder);
+      } else {
+        next.add(folder);
+      }
+      return next;
+    });
   };
 
   const fetchFolders = async () => {
@@ -162,6 +183,30 @@ export default function Home() {
       }
       await fetchFolders();
       await fetchNotes();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const openCreateNoteModal = (folderPath: string) => {
+    setTargetFolder(folderPath);
+    setNewNoteName('');
+    setIsNoteModalOpen(true);
+  };
+
+  const handleCreateNote = async () => {
+    if (!newNoteName.trim() || !targetFolder) return;
+    try {
+      const res = await fetch('/api/notes/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderPath: targetFolder, filename: newNoteName, author })
+      });
+      if (res.ok) {
+        setIsNoteModalOpen(false);
+        await fetchNotes();
+        // Option to automatically switch to the newly created note could be implemented here
+      }
     } catch (err) {
       console.error(err);
     }
@@ -259,12 +304,25 @@ export default function Home() {
           {!searchQuery && Object.entries(groupedNotes).map(([folder, folderNotes]) => (
             <div key={folder} className={styles.folderSection}>
               <div className={styles.folderTitle}>
-                <span title={folder}>{folder.split('/').pop() || folder}</span>
-                <button onClick={() => handleDeleteFolder(folder)} title="Remove Folder">
-                  <Trash2 size={14} />
-                </button>
+                <div 
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', flex: 1, overflow: 'hidden' }}
+                  onClick={() => toggleFolder(folder)}
+                >
+                  {collapsedFolders.has(folder) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  <span title={folder} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                    {folder.split('/').pop() || folder}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.6rem' }}>
+                  <button onClick={() => openCreateNoteModal(folder)} title="New Note">
+                    <Plus size={14} />
+                  </button>
+                  <button onClick={() => handleDeleteFolder(folder)} title="Remove Folder">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
-              {folderNotes.map((note) => (
+              {!collapsedFolders.has(folder) && folderNotes.map((note) => (
                 <div 
                   key={note.path} 
                   className={`${styles.noteItem} ${activeNote?.path === note.path ? styles.active : ''}`}
@@ -351,6 +409,32 @@ export default function Home() {
               </button>
               <button className={styles.saveBtn} onClick={handleAddFolder}>
                 Add Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Note Modal */}
+      {isNoteModalOpen && (
+        <div className={styles.modalOverlay} onClick={() => setIsNoteModalOpen(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <h3>New Lab Note</h3>
+            <p>Enter the filename for your new note. It will be added to <strong>{targetFolder.split('/').pop()}</strong>.</p>
+            <input 
+              type="text" 
+              placeholder="e.g. My Next Experiment" 
+              value={newNoteName}
+              onChange={(e) => setNewNoteName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateNote()}
+              autoFocus
+            />
+            <div className={styles.modalActions}>
+              <button className={styles.cancelBtn} onClick={() => setIsNoteModalOpen(false)}>
+                Cancel
+              </button>
+              <button className={styles.saveBtn} onClick={handleCreateNote}>
+                Create
               </button>
             </div>
           </div>

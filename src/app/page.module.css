@@ -105,7 +105,7 @@
   transition: color 0.2s;
 }
 .folderTitle button:hover {
-  color: #ef4444; /* red delete */
+  color: var(--text-primary);
 }
 
 .noteItem {
