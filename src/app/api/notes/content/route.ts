@@ -49,3 +49,34 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    const { path: filePath, content } = await request.json();
+    if (!filePath || typeof content !== 'string') {
+      return NextResponse.json({ error: 'Missing file path or content' }, { status: 400 });
+    }
+
+    const folders = await getFolders();
+    const isAllowed = folders.some(folder => filePath.startsWith(folder));
+    if (!isAllowed) {
+      return NextResponse.json({ error: 'Access denied: Path not in configured folders' }, { status: 403 });
+    }
+
+    if (!filePath.endsWith('.md')) {
+      return NextResponse.json({ error: 'Only .md files can be written' }, { status: 400 });
+    }
+
+    try {
+      await fs.stat(filePath);
+    } catch (e) {
+      return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    }
+
+    await fs.writeFile(filePath, content, 'utf8');
+    return NextResponse.json({ success: true, content });
+  } catch (error) {
+    console.error('Content save error:', error);
+    return NextResponse.json({ error: 'Failed to save content' }, { status: 500 });
+  }
+}

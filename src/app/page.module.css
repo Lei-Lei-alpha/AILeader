@@ -336,7 +336,7 @@
 .noteMeta {
   color: var(--text-secondary);
   font-size: 0.85rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--border-color);
   font-family: var(--font-heading);
@@ -346,3 +346,115 @@
   color: var(--text-primary);
   font-weight: 500;
 }
+
+.editorHeader {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.5rem;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 1rem;
+}
+
+.editorActions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.editBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.editBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-base);
+  color: var(--accent-base);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15);
+}
+
+.editBtn:active {
+  transform: scale(0.98);
+}
+
+.saveEditBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--accent-base);
+  border: 1px solid var(--accent-base);
+  color: #fff;
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.saveEditBtn:hover {
+  background: #7c3aed;
+  box-shadow: 0 8px 16px rgba(139, 92, 246, 0.4);
+  transform: translateY(-2px);
+}
+
+.saveEditBtn:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3);
+}
+
+.cancelEditBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cancelEditBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.cancelEditBtn:active {
+  transform: scale(0.98);
+}
+
+
+.editorTextarea {
+  width: 100%;
+  min-height: 55vh;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: #fff;
+  padding: 1rem;
+  border-radius: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.editorTextarea:focus {
+  outline: none;
+  border-color: var(--accent-base);
+}
+

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   FolderPlus, 
   FileText, 
   Trash2,
@@ -10,7 +10,10 @@ import {
   BookOpen,
   Plus,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Edit,
+  Save,
+  XCircle
 } from 'lucide-react';
 import styles from './page.module.css';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
@@ -53,6 +56,8 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
   const [contentLoading, setContentLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState('');
 
   useEffect(() => {
     activeNoteRef.current = activeNote;
@@ -141,6 +146,7 @@ export default function Home() {
   };
 
   const pollActiveContent = async (note: Note) => {
+    if (isEditing) return;
     try {
       const res = await fetch(`/api/notes/content?path=${encodeURIComponent(note.path)}`);
       const data = await res.json();
@@ -214,19 +220,54 @@ export default function Home() {
 
   const handleSelectNote = async (note: Note) => {
     setActiveNote(note);
+    setIsEditing(false);
     setContentLoading(true);
     try {
       const res = await fetch(`/api/notes/content?path=${encodeURIComponent(note.path)}`);
       const data = await res.json();
       setActiveContent(data.content || 'Failed to load content');
+      setEditedContent(data.content || '');
     } catch (err) {
       setActiveContent('Error loading note');
+      setEditedContent('');
     } finally {
       setContentLoading(false);
     }
     // Auto-close sidebar on mobile after selecting a note
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       setSidebarOpen(false);
+    }
+  };
+
+  const handleStartEditing = () => {
+    setEditedContent(activeContent);
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditedContent(activeContent);
+    setIsEditing(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!activeNote) return;
+    try {
+      const res = await fetch('/api/notes/content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: activeNote.path, content: editedContent })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActiveContent(data.content || editedContent);
+        setEditedContent(data.content || editedContent);
+        setIsEditing(false);
+        await fetchNotes(false);
+      } else {
+        console.error('Save failed:', data.error || 'Unknown');
+      }
+    } catch (err) {
+      console.error('Failed to save note:', err);
     }
   };
 
@@ -374,9 +415,36 @@ export default function Home() {
                 <div className={styles.noteMeta}>
                   Author: <strong>{author || 'Lab User'}</strong> &ensp;•&ensp; Created on {new Date(activeNote.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                 </div>
-                <MarkdownRenderer content={activeContent} />
+                <div className={styles.editorHeader}>
+                  {!isEditing ? (
+                    <button className={styles.editBtn} onClick={handleStartEditing}>
+                      <Edit size={16} />
+                      Edit
+                    </button>
+                  ) : (
+                    <div className={styles.editorActions}>
+                      <button className={styles.cancelEditBtn} onClick={handleCancelEdit}>
+                        <XCircle size={16} />
+                        Cancel
+                      </button>
+                      <button className={styles.saveEditBtn} onClick={handleSaveEdit}>
+                        <Save size={16} />
+                        Save
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {isEditing ? (
+                  <textarea
+                    className={styles.editorTextarea}
+                    value={editedContent}
+                    onChange={(e) => setEditedContent(e.target.value)}
+                  />
+                ) : (
+                  <MarkdownRenderer content={activeContent} />
+                )}
               </div>
-              <TableOfContents content={activeContent} />
+              <TableOfContents content={isEditing ? editedContent : activeContent} />
             </div>
           )}
 

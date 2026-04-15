@@ -2,6 +2,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeRaw from 'rehype-raw';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeSlug from 'rehype-slug';
@@ -13,7 +14,7 @@ export default function MarkdownRenderer({ content }: { content: string }) {
     <div className="markdown-body">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeSlug]}
+        rehypePlugins={[rehypeRaw, rehypeHighlight, rehypeKatex, rehypeSlug]}
         components={{
           h1: ({node, ...props}) => <h1 style={{ ...styles.h1, borderBottom: '1px solid var(--border-color)', paddingBottom: '0.3em' }} {...props} />,
           h2: ({node, ...props}) => <h2 style={{ ...styles.h2, borderBottom: '1px solid var(--border-color)', paddingBottom: '0.3em' }} {...props} />,
