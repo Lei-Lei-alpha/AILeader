@@ -13,7 +13,8 @@ import {
   ChevronRight,
   Edit,
   Save,
-  XCircle
+  XCircle,
+  Settings
 } from 'lucide-react';
 import styles from './page.module.css';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
@@ -58,6 +59,13 @@ export default function Home() {
   const [contentLoading, setContentLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [deleteUnusedFigures, setDeleteUnusedFigures] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
 
   useEffect(() => {
     activeNoteRef.current = activeNote;
@@ -66,6 +74,7 @@ export default function Home() {
   useEffect(() => {
     fetchFolders();
     fetchNotes();
+    fetchSettings();
     
     // Set up polling for sync
     const listInterval = setInterval(() => {
@@ -142,6 +151,40 @@ export default function Home() {
       console.error(err);
     } finally {
       if (showLoading) setLoading(false);
+    }
+  };
+
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      setDeleteUnusedFigures(data.deleteUnusedFigures || false);
+      if (data.author) setAuthor(data.author);
+    } catch (err) {
+      console.error('Failed to fetch settings:', err);
+    }
+  };
+
+  const updateSettings = async (updates: any) => {
+    setSettingsLoading(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDeleteUnusedFigures(data.deleteUnusedFigures || false);
+        if (data.author) setAuthor(data.author);
+      } else {
+        alert('Failed to update settings');
+      }
+    } catch (err) {
+      console.error('Failed to update settings:', err);
+      alert('Error updating settings');
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -255,7 +298,11 @@ export default function Home() {
       const res = await fetch('/api/notes/content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeNote.path, content: editedContent })
+        body: JSON.stringify({ 
+          path: activeNote.path, 
+          content: editedContent,
+          previousContent: activeContent
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -268,6 +315,83 @@ export default function Home() {
       }
     } catch (err) {
       console.error('Failed to save note:', err);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLTextAreaElement> | React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLTextAreaElement> | React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLTextAreaElement> | React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (!isEditing) {
+      alert('Please enter edit mode first');
+      return;
+    }
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file => 
+      ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'].includes(file.type)
+    );
+
+    if (imageFiles.length === 0) {
+      alert('Please drag and drop image files (PNG, JPG, GIF, WebP, SVG)');
+      return;
+    }
+
+    setUploadingImages(true);
+    try {
+      for (const file of imageFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/notes/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Insert markdown syntax at cursor position or at the end
+          const textarea = textareaRef.current;
+          if (textarea) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const beforeText = editedContent.substring(0, start);
+            const afterText = editedContent.substring(end);
+            const newContent = beforeText + '\n' + data.markdown + '\n' + afterText;
+            setEditedContent(newContent);
+            
+            // Move cursor after inserted text
+            setTimeout(() => {
+              if (textarea) {
+                textarea.focus();
+                const newCursorPos = start + data.markdown.length + 2;
+                textarea.setSelectionRange(newCursorPos, newCursorPos);
+              }
+            }, 0);
+          }
+        } else {
+          const error = await res.json();
+          alert(`Failed to upload ${file.name}: ${error.error}`);
+        }
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      alert('Failed to upload images');
+    } finally {
+      setUploadingImages(false);
     }
   };
 
@@ -385,6 +509,14 @@ export default function Home() {
         </div>
 
         <div className={styles.sidebarFooter}>
+          <button 
+            className={styles.addBtn} 
+            onClick={() => setIsSettingsOpen(true)}
+            title="Settings"
+            style={{ marginBottom: '0.5rem' }}
+          >
+            <Settings size={18} /> Settings
+          </button>
           <button className={styles.addBtn} onClick={() => setIsModalOpen(true)}>
             <FolderPlus size={18} /> Add Folder
           </button>
@@ -434,12 +566,77 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+                {isEditing && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                    💡 Tip: Drag and drop images to insert them, or use Markdown syntax: <code style={{ background: 'var(--bg-card)', padding: '0.2em 0.4em', borderRadius: '2px' }}>![alt text](/figures/image.png)</code>
+                  </div>
+                )}
                 {isEditing ? (
-                  <textarea
-                    className={styles.editorTextarea}
-                    value={editedContent}
-                    onChange={(e) => setEditedContent(e.target.value)}
-                  />
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    style={{
+                      position: 'relative',
+                      borderRadius: '4px',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <textarea
+                      ref={textareaRef}
+                      className={styles.editorTextarea}
+                      value={editedContent}
+                      onChange={(e) => setEditedContent(e.target.value)}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      style={{
+                        borderColor: isDragging ? 'var(--accent-base)' : undefined,
+                        borderWidth: isDragging ? '2px' : undefined,
+                        boxShadow: isDragging ? '0 0 0 3px rgba(139, 92, 246, 0.1)' : undefined,
+                        transition: 'all 200ms ease'
+                      }}
+                      disabled={uploadingImages}
+                    />
+                    {isDragging && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(139, 92, 246, 0.05)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '4px',
+                        pointerEvents: 'none',
+                        border: '2px dashed var(--accent-base)'
+                      }}>
+                        <div style={{ textAlign: 'center', color: 'var(--accent-base)', fontWeight: 500 }}>
+                          Drop images here to insert
+                        </div>
+                      </div>
+                    )}
+                    {uploadingImages && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '4px',
+                        pointerEvents: 'none'
+                      }}>
+                        <div style={{ color: 'white', fontWeight: 500 }}>
+                          Uploading images...
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <MarkdownRenderer content={activeContent} />
                 )}
@@ -503,6 +700,66 @@ export default function Home() {
               </button>
               <button className={styles.saveBtn} onClick={handleCreateNote}>
                 Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className={styles.modalOverlay} onClick={() => setIsSettingsOpen(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <h3>Settings</h3>
+            
+            <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={deleteUnusedFigures}
+                  onChange={(e) => {
+                    setDeleteUnusedFigures(e.target.checked);
+                    updateSettings({ deleteUnusedFigures: e.target.checked });
+                  }}
+                  disabled={settingsLoading}
+                  style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                />
+                <div>
+                  <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                    Delete Unused Figures
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                    Automatically remove figure files when they are no longer referenced in any markdown file
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                Author Name
+              </label>
+              <input 
+                type="text" 
+                placeholder="e.g. Dr. Lab Researcher" 
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                onBlur={() => updateSettings({ author })}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+
+            <div className={styles.modalActions}>
+              <button className={styles.cancelBtn} onClick={() => setIsSettingsOpen(false)}>
+                Close
               </button>
             </div>
           </div>

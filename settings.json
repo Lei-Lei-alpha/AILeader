@@ -7,6 +7,10 @@
     "/Users/lei_lei/labnotes/perovskites",
     "/Users/lei_lei/labnotes/Progress_tracker",
     "/Users/lei_lei/labnotes/HPC",
-    "/Users/lei_lei/labnotes/to_do"
-  ]
+    "/Users/lei_lei/labnotes/to_do",
+    "/Users/lei_lei/labnotes/prompts",
+    "/Users/lei_lei/labnotes/deephydride"
+  ],
+  "author": "Lab User",
+  "deleteUnusedFigures": true
 }

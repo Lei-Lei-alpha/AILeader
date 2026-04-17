@@ -31,6 +31,13 @@ export default function MarkdownRenderer({ content }: { content: string }) {
           td: ({node, ...props}) => (
             <td style={styles.td} {...props} />
           ),
+          img: ({node, ...props}: any) => (
+            <img 
+              style={styles.img} 
+              {...props}
+              loading="lazy"
+            />
+          ),
           code: ({node, inline, className, children, ...props}: any) => {
             return (
               <code style={inline ? styles.inlineCode : undefined} className={className} {...props}>
@@ -56,6 +63,16 @@ const styles = {
     borderLeft: '4px solid var(--accent-base)',
     background: 'rgba(139, 92, 246, 0.05)'
   },
+  img: {
+    maxWidth: '100%',
+    height: 'auto',
+    borderRadius: '4px',
+    marginTop: '12px',
+    marginBottom: '12px',
+    border: '1px solid var(--border-color)',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+    display: 'block'
+  } as React.CSSProperties,
   inlineCode: {
     background: 'var(--bg-card)',
     padding: '0.2em 0.4em',
