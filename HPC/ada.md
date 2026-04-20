@@ -19,3 +19,7 @@ export SLURM_SUBMIT_DIR=$(readlink -f $SLURM_SUBMIT_DIR)
 cd $SLURM_SUBMIT_DIR
 mpirun vasp_std > vasp.log
 ```
+
+## VASP with ASE
+
+## Gemma
