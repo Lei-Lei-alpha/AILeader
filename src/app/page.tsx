@@ -475,7 +475,7 @@ export default function Home() {
                 >
                   {collapsedFolders.has(folder) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                   <span title={folder} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
-                    {folder.split('/').pop() || folder}
+                    {folder.split(/[/\\]/).pop() || folder}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: '0.6rem' }}>
@@ -685,7 +685,7 @@ export default function Home() {
         <div className={styles.modalOverlay} onClick={() => setIsNoteModalOpen(false)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <h3>New Lab Note</h3>
-            <p>Enter the filename for your new note. It will be added to <strong>{targetFolder.split('/').pop()}</strong>.</p>
+            <p>Enter the filename for your new note. It will be added to <strong>{targetFolder.split(/[/\\]/).pop()}</strong>.</p>
             <input 
               type="text" 
               placeholder="e.g. My Next Experiment" 

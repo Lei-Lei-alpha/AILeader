@@ -29,13 +29,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { folderPath } = await request.json();
-    if (!folderPath || typeof folderPath !== 'string') {
+    const { folderPath: rawFolderPath } = await request.json();
+    if (!rawFolderPath || typeof rawFolderPath !== 'string') {
       return NextResponse.json({ error: 'Invalid folder path' }, { status: 400 });
     }
+    const folderPath = path.normalize(rawFolderPath);
 
     const settings = await getSettings();
-    
+
     // Validate folder exists
     try {
       const stats = await fs.stat(folderPath);

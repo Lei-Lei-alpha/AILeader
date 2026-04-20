@@ -64,15 +64,16 @@ async function scanFolderForFigures(folderPath: string, figuresInUse: Set<string
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const filePath = searchParams.get('path');
-    
-    if (!filePath) {
+    const rawFilePath = searchParams.get('path');
+
+    if (!rawFilePath) {
       return NextResponse.json({ error: 'Missing file path parameter' }, { status: 400 });
     }
-    
+    const filePath = path.normalize(rawFilePath);
+
     // Security check: ensure the file path starts with one of the configured folders
     const folders = await getFolders();
-    const isAllowed = folders.some(folder => filePath.startsWith(folder));
+    const isAllowed = folders.some(folder => filePath.startsWith(path.normalize(folder)));
     
     if (!isAllowed) {
       return NextResponse.json({ error: 'Access denied: Path not in configured folders' }, { status: 403 });
@@ -99,13 +100,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { path: filePath, content, previousContent } = await request.json();
-    if (!filePath || typeof content !== 'string') {
+    const { path: rawFilePath, content, previousContent } = await request.json();
+    if (!rawFilePath || typeof content !== 'string') {
       return NextResponse.json({ error: 'Missing file path or content' }, { status: 400 });
     }
+    const filePath = path.normalize(rawFilePath);
 
     const folders = await getFolders();
-    const isAllowed = folders.some(folder => filePath.startsWith(folder));
+    const isAllowed = folders.some(folder => filePath.startsWith(path.normalize(folder)));
     if (!isAllowed) {
       return NextResponse.json({ error: 'Access denied: Path not in configured folders' }, { status: 403 });
     }
