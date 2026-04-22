@@ -18,3 +18,4 @@ User authentication and authorization
 ## Orcherstration
 Allow use of chat to query and submit simulation jobs
 
+Use https://github.com/opendatalab/MinerU to extract text from pdf
