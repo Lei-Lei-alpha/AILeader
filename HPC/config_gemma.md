@@ -116,7 +116,7 @@ The model is now accessible via standard local HTTP requests or GUI frontends:
 
 ```Bash
 curl http://localhost:11434/api/generate -d '{
-  "model": "gemma2",
+  "model": "gemma4:31b",
   "prompt": "Detail the architectural differences between transformers and state space models.",
   "stream": false
 }'
