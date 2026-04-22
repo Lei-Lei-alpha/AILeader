@@ -15,7 +15,9 @@ async function getSettings(): Promise<any> {
     const defaultSettings = { 
       folders: [], 
       author: "Lab User",
-      deleteUnusedFigures: false
+      deleteUnusedFigures: false,
+      ollama_url: "http://localhost:11434",
+      ollama_model: "llama3"
     };
     await fs.writeFile(settingsPath, JSON.stringify(defaultSettings, null, 2));
     return defaultSettings;
@@ -46,6 +48,12 @@ export async function POST(request: Request) {
     }
     if (updates.deleteUnusedFigures !== undefined) {
       settings.deleteUnusedFigures = Boolean(updates.deleteUnusedFigures);
+    }
+    if (updates.ollama_url !== undefined) {
+      settings.ollama_url = String(updates.ollama_url).trim();
+    }
+    if (updates.ollama_model !== undefined) {
+      settings.ollama_model = String(updates.ollama_model).trim();
     }
 
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));

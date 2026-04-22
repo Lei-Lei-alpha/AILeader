@@ -109,7 +109,7 @@ cat gemma_serve_*.log
 On the local workstation, execute port forwarding to bridge local port 11434 to the HPC compute node:
 
 ```Bash
-ssh -N -L 11434:[COMPUTE_NODE_HOSTNAME]:11434 username@hpc.university.edu
+ssh -f -L 11434:[COMPUTE_NODE_HOSTNAME]:11434 username@hpc.university.edu
 ```
 3. Execute Query
 The model is now accessible via standard local HTTP requests or GUI frontends:
