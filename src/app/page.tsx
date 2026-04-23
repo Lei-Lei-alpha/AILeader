@@ -20,7 +20,15 @@ import {
   Send,
   MessageCircle,
   GripVertical,
-  Paperclip
+  Paperclip,
+  BarChart2,
+  Layers,
+  CheckSquare,
+  Play,
+  Pause,
+  RotateCcw,
+  Timer,
+  RefreshCw
 } from 'lucide-react';
 import styles from './page.module.css';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
@@ -92,6 +100,18 @@ export default function Home() {
   const [planFolder, setPlanFolder] = useState('');
   const [planTimeFrame, setPlanTimeFrame] = useState('1 month');
   const [isPlanLoading, setIsPlanLoading] = useState(false);
+  const [isCommittingPlan, setIsCommittingPlan] = useState(false);
+
+  const [isDashboardOpen, setIsDashboardOpen] = useState(false);
+  const [dashboardTasks, setDashboardTasks] = useState<any[]>([]);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [dashboardView, setDashboardView] = useState<'gantt'|'calendar'|'todo'>('gantt');
+  const [togglingTasks, setTogglingTasks] = useState<Record<number, boolean>>({});
+
+  // Pomodoro
+  const [pomodoroMode, setPomodoroMode] = useState<'focus' | 'break'>('focus');
+  const [pomodoroTimeLeft, setPomodoroTimeLeft] = useState(25 * 60);
+  const [isPomodoroActive, setIsPomodoroActive] = useState(false);
 
   const [attachedDocsText, setAttachedDocsText] = useState<string>('');
   const [attachedDocsNames, setAttachedDocsNames] = useState<string[]>([]);
@@ -99,6 +119,48 @@ export default function Home() {
   const docInputRef = useRef<HTMLInputElement>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const playChime = () => {
+    if (typeof window === 'undefined') return;
+    try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5);
+        gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.5);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 1.5);
+    } catch (e) {
+        console.error("Audio block", e);
+    }
+  };
+
+  useEffect(() => {
+    let interval: any = null;
+    if (isPomodoroActive && pomodoroTimeLeft > 0) {
+      interval = setInterval(() => {
+        setPomodoroTimeLeft((time) => time - 1);
+      }, 1000);
+    } else if (isPomodoroActive && pomodoroTimeLeft === 0) {
+      playChime();
+      setIsPomodoroActive(false);
+      if (pomodoroMode === 'focus') {
+          setPomodoroMode('break');
+          setPomodoroTimeLeft(5 * 60);
+      } else {
+          setPomodoroMode('focus');
+          setPomodoroTimeLeft(25 * 60);
+      }
+    }
+    return () => clearInterval(interval);
+  }, [isPomodoroActive, pomodoroTimeLeft, pomodoroMode]);
 
   useEffect(() => {
     activeNoteRef.current = activeNote;
@@ -613,6 +675,314 @@ export default function Home() {
     }
   };
 
+  const handleCommitPlan = async () => {
+    if (!planFolder || chatMessages.length === 0) return;
+    setIsCommittingPlan(true);
+    setChatMessages(prev => [...prev, { role: 'user', content: `Please formalize this discussion and extract the exact Research Plan and To-Do list to my workspace.` }]);
+
+    try {
+      const res = await fetch('/api/notes/commit_plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          messages: chatMessages,
+          projectFolder: planFolder 
+        })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: `*(Success: ${data.message})*` }]);
+        await fetchNotes(false); // Refresh sidebar to immediately show 00_Research_Plan.md
+      } else {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: `Error saving plan: ${data.error}` }]);
+      }
+    } catch (err) {
+      console.error(err);
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Failed to commit the plan to disk.' }]);
+    } finally {
+      setIsCommittingPlan(false);
+    }
+  };
+
+  const handleOpenDashboard = async (force: boolean = false) => {
+    setIsDashboardOpen(true);
+    setIsDashboardLoading(true);
+    try {
+        const res = await fetch('/api/notes/dashboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folders, force })
+        });
+        const data = await res.json();
+        if (res.ok && data.tasks) {
+            setDashboardTasks(data.tasks);
+        } else {
+            console.error(data.error);
+        }
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setIsDashboardLoading(false);
+    }
+  };
+
+  const handleToggleTask = async (idx: number) => {
+    const task = dashboardTasks[idx];
+    if (!task || !task.source_folder || !task.source_file) {
+      alert("Missing source reference for this task.");
+      return;
+    }
+
+    const newStatus = task.status === 'done' ? 'pending' : 'done';
+    setTogglingTasks(prev => ({...prev, [idx]: true}));
+
+    try {
+        const res = await fetch('/api/notes/toggle_task', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                source_folder: task.source_folder,
+                source_file: task.source_file,
+                title: task.title,
+                new_status: newStatus
+            })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            setDashboardTasks(prev => {
+                const next = [...prev];
+                next[idx] = { ...next[idx], status: newStatus };
+                return next;
+            });
+            fetchNotes(false); // background refresh of editor state
+        } else {
+            alert(`Toggle failed: ${data.error}`);
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Failed to toggle task');
+    } finally {
+        setTogglingTasks(prev => ({...prev, [idx]: false}));
+    }
+  };
+
+  const renderDashboard = () => {
+    if (!isDashboardOpen) return null;
+
+    const today = new Date();
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+    return (
+      <div className={styles.dashboardOverlay}>
+        <div className={styles.dashboardModal}>
+          <div className={styles.dashboardHeader}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+               <h2><BarChart2 size={20} /> Global Task Dashboard</h2>
+               <button 
+                  onClick={() => handleOpenDashboard(true)} 
+                  disabled={isDashboardLoading}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '4px', color: 'var(--text-secondary)', cursor: isDashboardLoading ? 'wait' : 'pointer', fontSize: '0.8rem', transition: 'background 0.2s' }}
+                  title="Force refresh AI project tasks"
+                >
+                  <RefreshCw size={14} style={{ animation: isDashboardLoading ? 'spinAi 1s linear infinite' : 'none' }}/> Sync Tasks
+                </button>
+            </div>
+            <button className={styles.iconBtn} onClick={() => setIsDashboardOpen(false)} title="Close Dashboard">
+              <X size={20} />
+            </button>
+          </div>
+          <div className={styles.dashboardBody}>
+            <div className={styles.dashboardSidebar}>
+              <button 
+                className={`${styles.dashboardFilterBtn} ${dashboardView === 'gantt' ? styles.active : ''}`}
+                onClick={() => setDashboardView('gantt')}
+              >
+                <Layers size={16} /> Timeline (Gantt)
+              </button>
+              <button 
+                className={`${styles.dashboardFilterBtn} ${dashboardView === 'calendar' ? styles.active : ''}`}
+                onClick={() => setDashboardView('calendar')}
+              >
+                <Calendar size={16} /> Calendar
+              </button>
+              <button 
+                className={`${styles.dashboardFilterBtn} ${dashboardView === 'todo' ? styles.active : ''}`}
+                onClick={() => setDashboardView('todo')}
+              >
+                <CheckSquare size={16} /> Global To-Do List
+              </button>
+            </div>
+            <div className={styles.dashboardContent}>
+              {isDashboardLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+                  <div className={styles.aiChatSpinner} style={{ width: 30, height: 30, borderWidth: 3, marginBottom: 15 }} />
+                  <p>AI is evaluating {folders.length} workspaces...</p>
+                </div>
+              ) : dashboardView === 'gantt' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <div style={{ marginBottom: '15px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '5px' }}>
+                      <span>Workspace Progress</span>
+                      <span>
+                        {dashboardTasks.length > 0 ? Math.round((dashboardTasks.filter(t => t.status === 'done').length / dashboardTasks.length) * 100) : 0}%
+                      </span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ 
+                        width: `${dashboardTasks.length > 0 ? (dashboardTasks.filter(t => t.status === 'done').length / dashboardTasks.length) * 100 : 0}%`, 
+                        height: '100%', 
+                        background: 'var(--accent-base)', 
+                        transition: 'width 0.3s ease' 
+                      }} />
+                    </div>
+                  </div>
+                  <div className={styles.ganttContainer} style={{ flex: 1, margin: 0 }}>
+                    <div className={styles.ganttHeader}>
+                      <div className={styles.ganttTaskLabel}>Task</div>
+                      <div className={styles.ganttTimeline}>
+                        <div className={styles.ganttMonthLabel}>This Month</div>
+                        <div className={styles.ganttMonthLabel}>Next Month</div>
+                        <div className={styles.ganttMonthLabel}>Month 3</div>
+                      </div>
+                    </div>
+                    {dashboardTasks.map((t, idx) => {
+                      const s = new Date(t.start || new Date());
+                      const e = new Date(t.end || new Date(s.getTime() + 1000 * 60 * 60 * 24 * 7));
+                      const offset = Math.max(0, (s.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                      const duration = Math.max(1, (e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
+                      const left = Math.min(100, (offset / 90) * 100);
+                      const width = Math.min(100 - left, (duration / 90) * 100);
+                      
+                      const isCritical = t.importance >= 4 && t.urgency >= 4;
+                      const isDone = t.status === 'done';
+                      let bgColor = isCritical ? 'rgba(239,68,68,0.8)' : (t.importance >= 3 ? 'rgba(245,158,11,0.8)' : 'rgba(59,130,246,0.8)');
+                      if (isDone) bgColor = 'rgba(16, 185, 129, 0.4)'; // green with low opacity
+                      
+                      return (
+                        <div key={idx} className={styles.ganttRow}>
+                          <div className={styles.ganttTaskLabel} style={{ opacity: isDone ? 0.5 : 1 }}>
+                            <div className={styles.ganttTaskTitle} style={{ textDecoration: isDone ? 'line-through' : 'none' }}>{t.title}</div>
+                            <div className={styles.ganttTaskProject}>{t.project}</div>
+                          </div>
+                          <div className={styles.ganttBarArea}>
+                            <div className={styles.ganttBar} style={{ left: `${left}%`, width: `${width}%`, background: bgColor, border: isDone ? '1px dashed rgba(255,255,255,0.5)' : 'none' }}>
+                              {isDone ? '✓ Completed' : t.title}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : dashboardView === 'todo' ? (
+                <div style={{ display: 'flex', gap: '20px', height: '100%' }}>
+                  <div style={{ flex: 1, background: 'rgba(30, 30, 34, 0.4)', borderRadius: '8px', padding: '20px', border: '1px solid rgba(255, 255, 255, 0.05)', overflowY: 'auto' }}>
+                    <h3 style={{ marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', color: 'var(--text-primary)' }}>Global To-Do List</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+                      {dashboardTasks.map((t, idx) => {
+                        const isCritical = t.importance >= 4 && t.urgency >= 4;
+                        const isDone = t.status === 'done';
+                        return (
+                          <div key={idx} style={{ 
+                            display: 'flex', alignItems: 'flex-start', gap: '15px', 
+                            padding: '12px', background: 'rgba(255,255,255,0.02)', 
+                            borderRadius: '6px', borderLeft: `3px solid ${isCritical ? '#ef4444' : '#3b82f6'}`,
+                            opacity: isDone ? 0.6 : 1
+                          }}>
+                             <input 
+                                type="checkbox" 
+                                checked={isDone}
+                                onChange={() => handleToggleTask(idx)}
+                                disabled={togglingTasks[idx]}
+                                style={{ marginTop: '4px', transform: 'scale(1.2)', cursor: togglingTasks[idx] ? 'wait' : 'pointer' }}
+                             />
+                             <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 500, textDecoration: isDone ? 'line-through' : 'none' }}>
+                                  {t.title}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                  Project: {t.project} &nbsp;|&nbsp; File: {t.source_file}
+                                </div>
+                             </div>
+                             <div style={{ fontSize: '0.7rem', background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: '4px', color: 'var(--text-muted)' }}>
+                               S: {t.importance} | U: {t.urgency}
+                             </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div style={{ width: '320px', background: 'rgba(30, 30, 34, 0.6)', borderRadius: '8px', padding: '25px', border: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                     <h3 style={{ marginTop: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}><Timer size={20}/> Focus Timer</h3>
+                     
+                     <div style={{ display: 'flex', gap: '10px', marginTop: '10px', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '8px' }}>
+                        <button 
+                          onClick={() => { setIsPomodoroActive(false); setPomodoroMode('focus'); setPomodoroTimeLeft(25*60); }}
+                          style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: pomodoroMode === 'focus' ? 'var(--accent-base)' : 'transparent', color: pomodoroMode === 'focus' ? 'white' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}
+                        >Focus (25m)</button>
+                        <button 
+                          onClick={() => { setIsPomodoroActive(false); setPomodoroMode('break'); setPomodoroTimeLeft(5*60); }}
+                          style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: pomodoroMode === 'break' ? 'var(--accent-base)' : 'transparent', color: pomodoroMode === 'break' ? 'white' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}
+                        >Break (5m)</button>
+                     </div>
+
+                     <div style={{ fontSize: '3.5rem', fontWeight: 700, fontFamily: 'monospace', margin: '30px 0', color: pomodoroMode === 'focus' ? '#ef4444' : '#10b981', textShadow: '0 0 20px rgba(255,255,255,0.1)' }}>
+                        {Math.floor(pomodoroTimeLeft / 60).toString().padStart(2, '0')}:{(pomodoroTimeLeft % 60).toString().padStart(2, '0')}
+                     </div>
+
+                     <div style={{ display: 'flex', gap: '15px' }}>
+                        <button 
+                          onClick={() => setIsPomodoroActive(!isPomodoroActive)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '20px', border: 'none', background: isPomodoroActive ? 'rgba(255,255,255,0.1)' : 'var(--accent-base)', color: 'white', cursor: 'pointer', fontSize: '0.95rem', transition: 'all 0.2s', fontWeight: 600 }}
+                        >
+                          {isPomodoroActive ? <Pause size={18}/> : <Play size={18}/>}
+                          {isPomodoroActive ? 'Pause' : 'Start'}
+                        </button>
+                        <button 
+                          onClick={() => { setIsPomodoroActive(false); setPomodoroTimeLeft(pomodoroMode === 'focus' ? 25*60 : 5*60); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.95rem', transition: 'all 0.2s' }}
+                        >
+                          <RotateCcw size={18}/> Reset
+                        </button>
+                     </div>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.calendarGrid}>
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                     <div key={d} className={styles.calendarHeaderDay}>{d}</div>
+                  ))}
+                  {Array.from({ length: 35 }).map((_, i) => {
+                     const cellDate = new Date(today);
+                     cellDate.setDate(today.getDate() - today.getDay() + i);
+                     const cellTasks = dashboardTasks.filter(t => {
+                       const ts = new Date(t.start || today);
+                       return ts.getDate() === cellDate.getDate() && ts.getMonth() === cellDate.getMonth();
+                     });
+                     return (
+                       <div key={i} className={styles.calendarCell}>
+                         <div className={styles.calendarDateNum}>{cellDate.getDate()}</div>
+                         {cellTasks.map((t, idx) => {
+                           const isCritical = t.importance >= 4 && t.urgency >= 4;
+                           return (
+                             <div key={idx} className={styles.calendarEvent} style={{ background: isCritical ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.6)' }}>
+                               {t.title}
+                             </div>
+                           );
+                         })}
+                       </div>
+                     );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Use TypeScript generic carefully to prevent parser mixups
   const groupedNotes: { [key: string]: Note[] } = {};
   for (const note of notes) {
@@ -696,6 +1066,16 @@ export default function Home() {
                 ))
               )}
             </div>
+          )}
+
+          {!sidebarCollapsed && (
+            <button 
+              className={styles.editBtn} 
+              style={{ width: '90%', margin: '0 auto 15px', display: 'flex', justifyContent: 'center', background: 'rgba(139, 92, 246, 0.1)', color: 'var(--accent-base)' }} 
+              onClick={() => handleOpenDashboard()}
+            >
+              <BarChart2 size={16}/> Global Dashboard
+            </button>
           )}
 
           {!searchQuery && Object.entries(groupedNotes).map(([folder, folderNotes]) => (
@@ -799,6 +1179,15 @@ export default function Home() {
                       <button className={styles.editBtn} onClick={handleStartEditing}>
                         <Edit size={16} />
                         Edit
+                      </button>
+                      <button 
+                        className={styles.editBtn} 
+                        onClick={() => setIsSummaryOpen(true)}
+                        title="Open AI Chat"
+                        style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+                      >
+                        <MessageCircle size={16} />
+                        Chat
                       </button>
                       <button 
                         className={styles.editBtn} 
@@ -1039,6 +1428,17 @@ export default function Home() {
               >
                 {isDocUploading ? <div className={styles.aiChatSpinner} /> : <Paperclip size={16} />}
               </button>
+              {planFolder && (
+                <button 
+                  className={styles.aiChatSendBtn}
+                  style={{ background: 'transparent', color: 'var(--accent-base)', fontWeight: 600, padding: '0 8px', width: 'auto' }}
+                  onClick={handleCommitPlan}
+                  disabled={isCommittingPlan}
+                  title="Accept & Commit Plan"
+                >
+                  {isCommittingPlan ? <div className={styles.aiChatSpinner} /> : <><Save size={16} /><span style={{marginLeft: '4px', fontSize: '0.75rem'}}>Commit</span></>}
+                </button>
+              )}
               <button 
                 className={styles.aiChatSendBtn}
                 onClick={handleSendMessage}
@@ -1067,6 +1467,7 @@ export default function Home() {
             <select 
               value={planFolder} 
               onChange={(e) => setPlanFolder(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && planFolder && planTimeFrame) submitAIPlan(); }}
               style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
             >
               <option value="" disabled>Select a folder...</option>
@@ -1081,6 +1482,7 @@ export default function Home() {
               placeholder="e.g. 2 weeks, 3 months, 1 year..." 
               value={planTimeFrame}
               onChange={(e) => setPlanTimeFrame(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && planFolder && planTimeFrame) submitAIPlan(); }}
               style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
             />
 
@@ -1089,7 +1491,7 @@ export default function Home() {
                 Cancel
               </button>
               <button 
-                className={styles.primaryBtn} 
+                className={styles.saveBtn} 
                 onClick={submitAIPlan}
                 disabled={!planFolder || !planTimeFrame}
               >
@@ -1258,6 +1660,8 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {renderDashboard()}
     </div>
   );
 }

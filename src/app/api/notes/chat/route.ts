@@ -29,10 +29,7 @@ export async function POST(request: Request) {
     const latestUserMessage = messages[messages.length - 1].content;
 
     // Advanced PI System Prompt
-    let systemPrompt = `You are a distinguished Principal Investigator and academic mentor. Your goal is to help the user polish their research ideas, discuss advanced math, physics, or conceptual theories, and refine their methodology for publication in top-tier (Q1) journals (e.g., Nature, Science, Cell). Be critical, scientifically rigorous, and highly actionable. Reference state-of-the-art methodology, suggest novel experiments or derivations, and push the research to the frontier.
-
-CRITICAL INSTRUCTION:
-If you and the user agree to update the formal research plan or the to-do list based on the chat, you MUST output the completely updated markdown content wrapped inside <UPDATE_PLAN>...</UPDATE_PLAN> for the plan, or <UPDATE_TODO>...</UPDATE_TODO> for the to-do list. The system will automatically overwrite the physical files for the user if you include these tags.`;
+    let systemPrompt = `You are a distinguished Principal Investigator and academic mentor. Your goal is to help the user polish their research ideas, discuss advanced math, physics, or conceptual theories, and refine their methodology for publication in top-tier (Q1) journals (e.g., Nature, Science, Cell). Be critical, scientifically rigorous, and highly actionable. Reference state-of-the-art methodology, suggest novel experiments or derivations, and push the research to the frontier.`;
 
     // 1. Web Search Integration
     let searchContext = "";
@@ -90,50 +87,7 @@ If you and the user agree to update the formal research plan or the to-do list b
     }
 
     const data = await response.json();
-    let resultText = data.message.content;
-
-    // Check for file update tags
-    if (projectFolder) {
-      try {
-        const planMatch = resultText.match(/<UPDATE_PLAN>([\s\S]*?)<\/UPDATE_PLAN>/);
-        const todoMatch = resultText.match(/<UPDATE_TODO>([\s\S]*?)<\/UPDATE_TODO>/);
-
-        if (planMatch || todoMatch) {
-          // Shared Archive Logic
-          let nextPrefixString = '00';
-          const archivePath = path.join(projectFolder, '.archive');
-          await fs.mkdir(archivePath, { recursive: true }).catch(() => {});
-          
-          const files = await fs.readdir(projectFolder);
-          let maxPrefix = -1;
-
-          for (const file of files) {
-            const match = file.match(/^(\d{2})_(Research_Plan\.md|ToDo\.md)$/);
-            if (match) {
-              const num = parseInt(match[1], 10);
-              if (num > maxPrefix) maxPrefix = num;
-              // Move to archive
-              await fs.rename(path.join(projectFolder, file), path.join(archivePath, file)).catch(() => {});
-            }
-          }
-          const nextPrefixNum = maxPrefix === -1 ? 0 : maxPrefix + 1;
-          nextPrefixString = nextPrefixNum.toString().padStart(2, '0');
-
-          if (planMatch) {
-            await fs.writeFile(path.join(projectFolder, `${nextPrefixString}_Research_Plan.md`), planMatch[1].trim(), 'utf8');
-            resultText = resultText.replace(/<UPDATE_PLAN>[\s\S]*?<\/UPDATE_PLAN>/, `\n\n*(Successfully generated and saved new version: \`${nextPrefixString}_Research_Plan.md\`)*\n`);
-          }
-          if (todoMatch) {
-            await fs.writeFile(path.join(projectFolder, `${nextPrefixString}_ToDo.md`), todoMatch[1].trim(), 'utf8');
-            resultText = resultText.replace(/<UPDATE_TODO>[\s\S]*?<\/UPDATE_TODO>/, `\n\n*(Successfully generated and saved new version: \`${nextPrefixString}_ToDo.md\`)*\n`);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to parse/update files from chat:", e);
-      }
-    }
-
-    return NextResponse.json({ message: resultText });
+    return NextResponse.json({ message: data.message.content });
 
   } catch (error: any) {
     console.error('Chat API error:', error);
