@@ -4,7 +4,7 @@ import path from 'path';
 
 export async function POST(request: Request) {
   try {
-    const { folderPath, filename, author } = await request.json();
+    const { folderPath, filename, author, content } = await request.json();
     
     if (!folderPath || !filename) {
       return NextResponse.json({ error: 'Missing folderPath or filename' }, { status: 400 });
@@ -26,13 +26,18 @@ export async function POST(request: Request) {
       // File does not exist, proceed
     }
 
-    // Generate template
-    const displayTitle = finalFilename.replace('.md', '').split('-').join(' ').split('_').join(' ');
-    const authorString = author ? `*Author: ${author}*\n` : '';
-    const template = `# ${displayTitle}\n\n${authorString}*Created on: ${new Date().toLocaleDateString()}*\n\n---\n\nWrite your notes here...`;
+    let fileContent = '';
+    if (content) {
+      fileContent = content;
+    } else {
+      // Generate template
+      const displayTitle = finalFilename.replace('.md', '').split('-').join(' ').split('_').join(' ');
+      const authorString = author ? `*Author: ${author}*\n` : '';
+      fileContent = `# ${displayTitle}\n\n${authorString}*Created on: ${new Date().toLocaleDateString()}*\n\n---\n\nWrite your notes here...`;
+    }
 
     // Write file
-    await fs.writeFile(fullPath, template);
+    await fs.writeFile(fullPath, fileContent);
 
     return NextResponse.json({ success: true, path: fullPath });
   } catch (error) {

@@ -1,18 +1,10 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
+import { getSettings, DASHBOARD_CACHE_PATH } from '@/lib/settings';
+import { generateText } from '@/lib/universalLLM';
 
-const settingsPath = path.join(process.cwd(), 'settings.json');
-const cachePath = path.join(process.cwd(), '.dashboard_cache.json');
-
-async function getSettings(): Promise<any> {
-  try {
-    const data = await fs.readFile(settingsPath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return { ollama_url: "http://localhost:11434", ollama_model: "llama3" };
-  }
-}
+const cachePath = DASHBOARD_CACHE_PATH;
 
 export async function POST(request: Request) {
   try {
@@ -34,13 +26,58 @@ export async function POST(request: Request) {
       }
     }
 
-    const settings = await getSettings();
-    const ollamaUrl = settings.ollama_url || "http://localhost:11434";
-    const ollamaModel = settings.ollama_model || "llama3";
-
     // Gather task context from all folders
     let allTasksContext = "";
+    let directMetaTasks: any[] = [];
+
     for (const folder of folders) {
+      // Try to read .research_meta.json for structured tasks
+      try {
+        const metaPath = path.join(folder, ".research_meta.json");
+        const metaContent = await fs.readFile(metaPath, 'utf8');
+        const meta = JSON.parse(metaContent);
+        
+        if (meta.smartGoals && Array.isArray(meta.smartGoals)) {
+          for (const goal of meta.smartGoals) {
+            directMetaTasks.push({
+              id: goal.id,
+              source_folder: folder,
+              source_file: ".research_meta.json",
+              project: meta.project?.displayName || path.basename(folder),
+              title: `[Goal] ${goal.title}`,
+              start: goal.timeBound,
+              end: goal.timeBound,
+              importance: goal.priority ? (6 - goal.priority) : 3, // Convert 1-5 (1 high) to 1-5 (5 high)
+              urgency: 3,
+              status: goal.status === 'done' ? 'done' : 'pending',
+              smartGoalId: goal.id
+            });
+          }
+        }
+        
+        if (meta.milestones && Array.isArray(meta.milestones)) {
+          for (const m of meta.milestones) {
+            if (m.status === 'completed') continue; // Don't clutter with old milestones
+            directMetaTasks.push({
+              id: m.id,
+              source_folder: folder,
+              source_file: ".research_meta.json",
+              project: meta.project?.displayName || path.basename(folder),
+              title: `[Milestone] ${m.title}`,
+              start: m.dueDate,
+              end: m.dueDate,
+              importance: 4,
+              urgency: 4,
+              status: m.status === 'completed' ? 'done' : 'pending',
+              milestoneId: m.id,
+              stage: m.stage
+            });
+          }
+        }
+      } catch (e) {
+        // Meta might not exist yet, skip
+      }
+
       try {
         const files = await fs.readdir(folder);
         // Only look at main ToDo and Research_Plan files, ignoring .archive
@@ -59,11 +96,14 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!allTasksContext) {
-      allTasksContext = "No active tasks found in the provided workspaces.";
+    if (!allTasksContext && directMetaTasks.length === 0) {
+      return NextResponse.json({ tasks: [] });
     }
 
-    const systemPrompt = `You are a strict task prioritization and extraction system. The user wants a global view of every task from all their research projects.
+    let parsedTasks = [...directMetaTasks];
+
+    if (allTasksContext) {
+      const systemPrompt = `You are a strict task prioritization and extraction system. The user wants a global view of every task from all their research projects.
 I have appended chunks of their To-Do lists and research plans below.
 Your job is to read all of these implicit and explicit tasks, evaluate their importance and urgency (both on a scale of 1-5 where 5 is highest), and return ONLY a valid JSON array wrapped precisely inside <DASHBOARD_JSON>...</DASHBOARD_JSON>.
 
@@ -83,35 +123,23 @@ Each object in the JSON array MUST have the exact following shape:
 
 If start/end dates are not explicitly written, infer logical dates based on the sequence within the research plan logic, placing them into a theoretical timeframe spanning the upcoming 3 months. Do NOT output anything outside the <DASHBOARD_JSON> tags.`;
 
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: ollamaModel,
-        prompt: `${systemPrompt}\n\n=== AGGREGATED WORKSPACE CONTEXT ===${allTasksContext}`,
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      return NextResponse.json({ error: `Ollama API error: ${errorData}` }, { status: response.status });
-    }
-
-    const data = await response.json();
-    const resultText = data.response;
-
-    const match = resultText.match(/<DASHBOARD_JSON>([\s\S]*?)<\/DASHBOARD_JSON>/);
-    let parsedTasks = [];
-    if (match && match[1]) {
       try {
-        parsedTasks = JSON.parse(match[1].trim());
+        const resultText = await generateText(`${systemPrompt}\n\n=== AGGREGATED WORKSPACE CONTEXT ===${allTasksContext}`, {
+          temperature: 0.2
+        });
+
+        const match = resultText.match(/<DASHBOARD_JSON>([\s\S]*?)<\/DASHBOARD_JSON>/);
+        if (match && match[1]) {
+          try {
+            const extracted = JSON.parse(match[1].trim());
+            parsedTasks = [...parsedTasks, ...extracted];
+          } catch (e) {
+            console.error("JSON parse failure for dashboard:", match[1]);
+          }
+        }
       } catch (e) {
-        console.error("JSON parse failure for dashboard:", match[1]);
-        return NextResponse.json({ error: "AI failed to format JSON." }, { status: 500 });
+        console.error("LLM generation error in dashboard:", e);
       }
-    } else {
-      return NextResponse.json({ error: "Missing JSON tags." }, { status: 500 });
     }
 
     // Sort heavily by Score (Urgency + Importance)

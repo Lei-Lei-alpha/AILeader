@@ -5,21 +5,35 @@ import { search } from 'duck-duck-scrape';
 import { getSettings } from '@/lib/settings';
 import { readProjectMeta } from '@/lib/projectMeta';
 import { chat } from '@/lib/universalLLM';
+import type { MentorChatMode, LLMMessage } from '@/lib/types';
 
 export async function POST(request: Request) {
   try {
-    const { messages, contextFile, projectFolder } = await request.json();
+    const { messages, contextFile, projectFolder, mode = 'mentor' } = await request.json();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages must be an array' }, { status: 400 });
     }
 
+    const settings = await getSettings();
     const latestUserMessage = messages[messages.length - 1].content;
 
-    // Advanced PI System Prompt
-    let systemPrompt = `You are a distinguished Principal Investigator and academic mentor. Your goal is to help the user polish their research ideas, discuss advanced math, physics, or conceptual theories, and refine their methodology for publication in top-tier (Q1) journals (e.g., Nature, Science, Cell). Be critical, scientifically rigorous, and highly actionable. Reference state-of-the-art methodology, suggest novel experiments or derivations, and push the research to the frontier.`;
+    // Load Persona Prompt based on mode
+    let systemPrompt = "";
+    try {
+      const personaFile = mode === 'writing' ? 'writing_coach.md' 
+                        : mode === 'methodology' ? 'methodology_mentor.md'
+                        : mode === 'literature' ? 'literature_mentor.md'
+                        : 'mentor_system.md';
+
+      const personaData = await fs.readFile(path.join(process.cwd(), '.prompts', personaFile), 'utf8');
+      systemPrompt = personaData;
+    } catch (e) {
+      systemPrompt = `You are a distinguished Principal Investigator and academic mentor. Your goal is to help the user polish their research ideas and refine their methodology for publication in top-tier journals.`;
+    }
 
     // ... (keep searchContext, projectContext, noteContext, fileIndexContext logic same)
+
 
     // 1. Web Search Integration
     let searchContext = "";
@@ -27,10 +41,10 @@ export async function POST(request: Request) {
       const searchResults = await search(latestUserMessage, { safeSearch: 1 as any });
       const topResults = searchResults.results.slice(0, 3);
       if (topResults.length > 0) {
-        searchContext = "=== RECENT WEB SEARCH CONTEXT ===\n" + topResults.map(r => `Title: ${r.title}\nSnippet: ${r.description}\nURL: ${r.url}`).join('\n\n');
+        searchContext = "\n\n=== RECENT WEB SEARCH CONTEXT ===\n" + topResults.map(r => `Title: ${r.title}\nSnippet: ${r.description}\nURL: ${r.url}`).join('\n\n');
       }
     } catch (e) {
-      console.error("Duck Duck Scrape error in chat:", e);
+      console.error("Duck Duck Scrape error in mentor chat:", e);
     }
 
     // 2. Load Project Domain/Memory Context
@@ -39,24 +53,20 @@ export async function POST(request: Request) {
       try {
         const memoryPath = path.join(projectFolder, '.ai_memory.md');
         const memoryData = await fs.readFile(memoryPath, 'utf8');
-        projectContext = `\n\n=== PROJECT DOMAIN MEMORY ===\n${memoryData.substring(0, 3000)}`; // limit size
-      } catch (e) {
-        // No memory file exists yet
-      }
+        projectContext = `\n\n=== PROJECT DOMAIN MEMORY ===\n${memoryData.substring(0, 3000)}`;
+      } catch (e) { /* ignore */ }
     }
 
-    // 3. Load Active Note Context (if any)
+    // 3. Load Active Note Context
     let noteContext = "";
     if (contextFile) {
       try {
         const content = await fs.readFile(contextFile, 'utf8');
         noteContext = `\n\n=== CURRENT NOTE / ACTIVE DOCUMENT ===\n${content.substring(0, 3000)}`;
-      } catch (e) {
-        console.error(`Error reading context file ${contextFile}:`, e);
-      }
+      } catch (e) { /* ignore */ }
     }
 
-    // 4. File index context — inject summaries from .research_meta.json when available
+    // 4. File index context
     let fileIndexContext = "";
     if (projectFolder) {
       try {
@@ -64,15 +74,16 @@ export async function POST(request: Request) {
         const indexed = meta?.fileIndex?.filter((e) => e.summary) ?? [];
         if (indexed.length > 0) {
           const summaryLines = indexed
-            .slice(0, 12) // cap at 12 files to keep context budget sane
-            .map((e) => `- **${e.relativePath}** (${e.fileType}): ${e.summary}${e.keywords.length ? ` [${e.keywords.join(', ')}]` : ''}`)
+            .slice(0, 12)
+            .map((e) => `- **${e.relativePath}** (${e.fileType}): ${e.summary}`)
             .join('\n');
-          fileIndexContext = `\n\n=== INDEXED PROJECT FILES (${indexed.length} files) ===\n${summaryLines}`;
+          fileIndexContext = `\n\n=== INDEXED PROJECT FILES ===\n${summaryLines}`;
         }
-      } catch { /* no meta yet, skip */ }
+      } catch { /* ignore */ }
     }
 
-    const injectedSystemPrompt = `${systemPrompt}\n\n${searchContext}${projectContext}${fileIndexContext}${noteContext}`;
+    const mentorPersona = settings.mentor_persona ? `\n\nAdditional Mentor Context: The researcher is working in the field of ${settings.mentor_persona}.` : "";
+    const injectedSystemPrompt = `${systemPrompt}${mentorPersona}${searchContext}${projectContext}${fileIndexContext}${noteContext}`;
 
     // Automatically detect `/figures/...` in messages and inject base64
     for (const msg of messages) {
@@ -101,7 +112,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: responseContent });
 
   } catch (error: any) {
-    console.error('Chat API error:', error);
+    console.error('Mentor Chat API error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -1,17 +1,9 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-
-const settingsPath = path.join(process.cwd(), 'settings.json');
-
-async function getSettings(): Promise<any> {
-  try {
-    const data = await fs.readFile(settingsPath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return { ollama_url: "http://localhost:11434", ollama_model: "llama3" };
-  }
-}
+import { getSettings } from '@/lib/settings';
+import { initProjectMeta } from '@/lib/projectMeta';
+import { generateText } from '@/lib/universalLLM';
 
 export async function POST(request: Request) {
   try {
@@ -20,10 +12,6 @@ export async function POST(request: Request) {
     if (!projectFolder) {
       return NextResponse.json({ error: 'No project folder provided' }, { status: 400 });
     }
-
-    const settings = await getSettings();
-    const ollamaUrl = settings.ollama_url || "http://localhost:11434";
-    const ollamaModel = settings.ollama_model || "llama3";
 
     // Format chat history into a transcript format for the LLM
     const chatTranscript = messages.map((m: any) => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n');
@@ -39,23 +27,7 @@ The actionable task list with markdown checkboxes (- [ ]).
 
 Do not include any greeting or conversational text outside these tags.`;
 
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: ollamaModel,
-        prompt: `${systemPrompt}\n\n=== CHAT TRANSCRIPT ===\n${chatTranscript}`,
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      return NextResponse.json({ error: `Ollama API error: ${errorData}` }, { status: response.status });
-    }
-
-    const data = await response.json();
-    const resultText = data.response;
+    const resultText = await generateText(`${systemPrompt}\n\n=== CHAT TRANSCRIPT ===\n${chatTranscript}`);
 
     const planMatch = resultText.match(/<RESEARCH_PLAN>([\s\S]*?)<\/RESEARCH_PLAN>/);
     const todoMatch = resultText.match(/<TODO>([\s\S]*?)<\/TODO>/);
@@ -91,8 +63,45 @@ Do not include any greeting or conversational text outside these tags.`;
       return NextResponse.json({ error: 'Failed to write files to disk' }, { status: 500 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    // Ensure .research_meta.json exists and advance stage if plan keywords suggest it
+    try {
+      const meta = await initProjectMeta(projectFolder);
+      const combinedText = (planContent + ' ' + todoContent).toLowerCase();
+
+      // Detect stage advancement keywords in the committed plan
+      const stageKeywords: Array<{ stage: string; keywords: string[] }> = [
+        { stage: 'literature_review', keywords: ['literature review', 'related work', 'prior art', 'survey', 'systematic review'] },
+        { stage: 'methodology', keywords: ['methodology', 'experimental design', 'research design', 'framework', 'model design'] },
+        { stage: 'experiments', keywords: ['experiment', 'simulation', 'data collection', 'prototype', 'implementation', 'benchmark'] },
+        { stage: 'writing', keywords: ['manuscript', 'writing', 'draft', 'paper structure', 'abstract', 'introduction section'] },
+        { stage: 'submission', keywords: ['submission', 'submit to', 'journal submission', 'conference submission', 'arxiv'] },
+        { stage: 'revision', keywords: ['revision', 'reviewer comments', 'rebuttal', 'revise and resubmit'] },
+        { stage: 'published', keywords: ['published', 'accepted', 'in press', 'doi:'] },
+      ];
+
+      const STAGE_ORDER = ['idea', 'literature_review', 'methodology', 'experiments', 'writing', 'submission', 'revision', 'published'];
+      const currentIdx = STAGE_ORDER.indexOf(meta.project.stage);
+      let bestStageIdx = currentIdx;
+
+      for (const { stage, keywords } of stageKeywords) {
+        const idx = STAGE_ORDER.indexOf(stage);
+        if (idx > bestStageIdx && keywords.some((kw) => combinedText.includes(kw))) {
+          bestStageIdx = idx;
+        }
+      }
+
+      if (bestStageIdx > currentIdx) {
+        const { updateProjectMeta } = await import('@/lib/projectMeta');
+        await updateProjectMeta(projectFolder, {
+          project: { ...meta.project, stage: STAGE_ORDER[bestStageIdx] as any, updatedAt: Date.now() },
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to init/update project meta:', e);
+    }
+
+    return NextResponse.json({
+      success: true,
       message: `Successfully finalized and saved ${nextPrefixString}_Research_Plan.md and ToDo.`,
       prefixStr: nextPrefixString
     });

@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs/promises';
+import path from 'path';
+
 // @ts-ignore
 import pdfParse from 'pdf-parse';
 import * as mammoth from 'mammoth';
@@ -54,13 +57,28 @@ export async function POST(request: Request) {
     }
     // 4. Image/Figure OCR (PNG, JPG, BMP)
     else if (fileType.startsWith('image/') || fileName.endsWith('.png') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) {
+      const base64Data = nodeBuffer.toString('base64');
+      
+      // Save the figure as requested
+      const figuresDir = path.join(process.cwd(), 'public', 'figures');
       try {
-        const { data: { text } } = await Tesseract.recognize(nodeBuffer, 'eng');
-        extractedText = "--- BEGIN OCR GRAPHICAL EXTRACTION ---\n" + text + "\n--- END OCR GRAPHICAL EXTRACTION ---\n\n[WARNING: Currently unable to natively read graphical figure data. Only textual data has been extracted via OCR.]";
-      } catch (err) {
-        console.error('Image OCR Error:', err);
-        return NextResponse.json({ error: 'Failed to extract optical text from Image.' }, { status: 500 });
-      }
+        await fs.mkdir(figuresDir, { recursive: true });
+      } catch (e) {}
+      
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const safeName = fileName.replace(/[^a-z0-9.-]/gi, '_');
+      const savedFilename = `${timestamp}-${randomStr}-${safeName}`;
+      const filepath = path.join(figuresDir, savedFilename);
+      
+      await fs.writeFile(filepath, nodeBuffer);
+
+      return NextResponse.json({
+        success: true,
+        text: `![${file.name}](/figures/${savedFilename})\n[Image attached and passed directly to multimodal LLM]`,
+        filename: file.name,
+        imageBase64: base64Data
+      });
     }
     // 5. Fallback for txt, md, csv, etc.
     else {

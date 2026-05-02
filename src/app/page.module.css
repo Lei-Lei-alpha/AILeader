@@ -652,14 +652,17 @@
 .aiChatSection {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding-top: 1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .aiChatMessages {
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
-  max-height: 340px;
-  overflow-y: auto;
+  flex: 1;
+  overflow-y: visible;
   scrollbar-width: thin;
   scrollbar-color: rgba(139, 92, 246, 0.15) transparent;
 }
@@ -1030,4 +1033,421 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── Research Pipeline Overlay ─────────────────────────────────────────────── */
+
+.pipelineOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: stretch;
+}
+
+.pipelineModal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1300px;
+  margin: 0 auto;
+  background: var(--bg-main);
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.pipelineHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
+  flex-shrink: 0;
+}
+
+.pipelineTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.pipelineProjectName {
+  font-size: 0.8rem;
+  color: var(--accent-base);
+  background: rgba(139, 92, 246, 0.1);
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+
+.pipelineBody {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.pipelineMain {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pipelineSidebar {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-color);
+  overflow-y: auto;
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Stage track */
+.stageTrack {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.stageNode {
+  flex: 1;
+  min-width: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 10px 6px 8px;
+  border-radius: 0;
+  position: relative;
+  transition: background 0.15s;
+}
+
+.stageNode:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 60%;
+  background: var(--border-color);
+}
+
+.stageNodeActive {
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.stageNodeCurrent {
+  background: rgba(139, 92, 246, 0.2);
+}
+
+.stageNodeDone {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.stageDot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  border: 2px solid transparent;
+}
+
+.stageDotPending {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+}
+
+.stageDotCurrent {
+  background: var(--accent-base);
+  border-color: var(--accent-base);
+  color: white;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.2);
+}
+
+.stageDotDone {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.stageLabel {
+  font-size: 0.68rem;
+  text-align: center;
+  color: var(--text-muted);
+  line-height: 1.3;
+  max-width: 90px;
+}
+
+.stageLabelCurrent {
+  color: var(--accent-base);
+  font-weight: 600;
+}
+
+.stageLabelDone {
+  color: #10b981;
+}
+
+.stageMilestoneCount {
+  font-size: 0.62rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+/* Milestone cards grid */
+.milestonesSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.milestonesSectionTitle {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.milestoneCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.milestoneCard:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.08);
+}
+
+.milestoneCardSelected {
+  border-color: var(--accent-base);
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.milestoneCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.milestoneStatusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.milestoneCardTitle {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.milestoneCardDue {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.milestoneCardDesc {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.milestoneStageBadge {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--accent-base);
+  font-weight: 600;
+}
+
+/* Milestone detail panel (right sidebar) */
+.milestoneDetailHeader {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.milestoneDetailTitle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.milestoneDetailBody {
+  padding: 14px 16px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detailLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.detailInput {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.detailInput:focus {
+  outline: none;
+  border-color: var(--accent-base);
+}
+
+.smartGoalBox {
+  background: rgba(139, 92, 246, 0.05);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.smartRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.smartKey {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent-base);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.smartVal {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Goal & Publication management sidebar section */
+.goalOutputSection {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.goalOutputSectionTitle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pubTargetCard {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pubTargetVenue {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pubTargetMeta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.pubTargetStatus {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.statusPending { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+.statusInProgress { background: rgba(139,92,246,0.15); color: var(--accent-base); }
+.statusSubmitted { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.statusUnderReview { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.statusAccepted { background: rgba(16,185,129,0.15); color: #10b981; }
+.statusPublished { background: rgba(16,185,129,0.25); color: #10b981; }
+.statusRejected { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+.pipelineGenerateBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  background: var(--accent-base);
+  color: white;
+  border: none;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.pipelineGenerateBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pipelineGenerateBtn:hover:not(:disabled) {
+  opacity: 0.9;
 }

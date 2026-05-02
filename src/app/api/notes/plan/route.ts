@@ -2,18 +2,10 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { search } from 'duck-duck-scrape';
+import { getSettings } from '@/lib/settings';
+import { generateText } from '@/lib/universalLLM';
 
-const settingsPath = path.join(process.cwd(), 'settings.json');
-const promptPath = path.join(process.cwd(), 'prompts', 'AI_plan_research_project.md');
-
-async function getSettings(): Promise<any> {
-  try {
-    const data = await fs.readFile(settingsPath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return { ollama_url: "http://localhost:11434", ollama_model: "llama3" };
-  }
-}
+const promptPath = path.join(process.cwd(), '.prompts', 'AI_plan_research_project.md');
 
 export async function POST(request: Request) {
   try {
@@ -24,10 +16,7 @@ export async function POST(request: Request) {
     }
 
     const settings = await getSettings();
-    const ollamaUrl = settings.ollama_url || "http://localhost:11434";
-    const ollamaModel = settings.ollama_model || "llama3";
 
-    let tasksContext = "";
     let systemPrompt = "";
 
     // Load default prompt
@@ -93,23 +82,7 @@ ${folderContents || "No notes found in folder."}
 
 Please generate the Research Plan and the <CALENDAR_JSON> data!`;
 
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: ollamaModel,
-        prompt: fullPrompt,
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      return NextResponse.json({ error: `Ollama API error: ${errorData}` }, { status: response.status });
-    }
-
-    const data = await response.json();
-    const resultText = data.response;
+    const resultText = await generateText(fullPrompt, { temperature: 0.7 });
 
     // Append to memory
     try {

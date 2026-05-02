@@ -1,0 +1,1 @@
+Updated `upload_doc/route.ts` to fully save uploaded images into the `public/figures` directory instead of only converting them to base64. The route now returns standard Markdown syntax referencing the saved file `![filename](/figures/filename.ext)`. This ensures the Chat UI automatically displays the uploaded figures naturally.

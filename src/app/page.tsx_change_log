@@ -1,0 +1,1 @@
+Reverted frontend handling of base64 images to prevent Next.js API payload size limits (HTTP 413) when chatting with large images. The frontend now only tracks the markdown file references.

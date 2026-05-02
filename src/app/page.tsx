@@ -1,187 +1,104 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  FolderPlus, 
-  FileText, 
-  Trash2,
-  Menu,
-  X,
   BookOpen,
-  Plus,
-  ChevronDown,
-  ChevronRight,
   Edit,
   Save,
   XCircle,
-  Settings,
   Sparkles,
-  Calendar,
-  Send,
   MessageCircle,
-  GripVertical,
-  Paperclip,
-  BarChart2,
-  Layers,
-  CheckSquare,
-  Play,
-  Pause,
-  RotateCcw,
-  Timer,
-  RefreshCw
+  Settings,
+  Calendar,
+  Menu,
+  GitBranch,
 } from 'lucide-react';
 import styles from './page.module.css';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
 import TableOfContents from '@/components/TableOfContents';
-
-type Note = {
-  name: string;
-  path: string;
-  folder: string;
-  relativePath: string;
-  size: number;
-  lastModified: number;
-  createdAt: number;
-  snippet?: string;
-};
-
-type CalendarTask = { title: string; description: string; start: string; end: string };
-type ChatMessage = { role: 'user' | 'assistant'; content: string; calendarTasks?: CalendarTask[] };
+import Sidebar from '@/components/Sidebar';
+import MentorChatPanel from '@/components/MentorChatPanel';
+import Dashboard from '@/components/Dashboard';
+import FileIndexStatus from '@/components/FileIndexStatus';
+import ResearchPipelineView from '@/components/ResearchPipelineView';
+import NotificationBell from '@/components/NotificationBell';
+import type { Note, ChatMessage, CalendarTask, ProjectMeta, MentorChatMode, LLMProvider, AppSettings } from '@/lib/types';
 
 export default function Home() {
+  // ── Core data ────────────────────────────────────────────────────────────
   const [folders, setFolders] = useState<string[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [author, setAuthor] = useState<string>('');
+  const [author, setAuthor] = useState('');
+  const [projectFolders, setProjectFolders] = useState<Set<string>>(new Set());
+
+  // ── Note viewing / editing ───────────────────────────────────────────────
   const [activeNote, setActiveNote] = useState<Note | null>(null);
-  const [activeContent, setActiveContent] = useState<string>('');
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Note[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  
-  // Ref for polling without stale closures
-  const activeNoteRef = React.useRef<Note | null>(null);
-  
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newFolderPath, setNewFolderPath] = useState('');
-  
-  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
-  const [targetFolder, setTargetFolder] = useState('');
-  const [newNoteName, setNewNoteName] = useState('');
-  
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
-  
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [contentLoading, setContentLoading] = useState(false);
+  const [activeContent, setActiveContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-  
+  const [contentLoading, setContentLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const activeNoteRef = useRef<Note | null>(null);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // ── Settings ─────────────────────────────────────────────────────────────
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [deleteUnusedFigures, setDeleteUnusedFigures] = useState(false);
+  const [llmProvider, setLlmProvider] = useState<LLMProvider>('ollama');
   const [ollamaUrl, setOllamaUrl] = useState('');
   const [ollamaModel, setOllamaModel] = useState('');
+  const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [openaiModel, setOpenaiModel] = useState('');
+  const [anthropicApiKey, setAnthropicApiKey] = useState('');
+  const [anthropicModel, setAnthropicModel] = useState('');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [geminiModel, setGeminiModel] = useState('');
+  const [mentorPersona, setMentorPersona] = useState('');
   const [settingsLoading, setSettingsLoading] = useState(false);
-  const [summaryContent, setSummaryContent] = useState('');
+
+  // ── AI Panel (shared state) ───────────────────────
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
-  const [aiPanelWidth, setAiPanelWidth] = useState(350);
-  
+  const [summaryContent, setSummaryContent] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [isChatLoading, setIsChatLoading] = useState(false);
-  const [isResizingAi, setIsResizingAi] = useState(false);
-  
-  // New States for AI Plan Feature
+  const [attachedDocsText, setAttachedDocsText] = useState('');
+  const [attachedDocsNames, setAttachedDocsNames] = useState<string[]>([]);
+  const [chatMode, setChatMode] = useState<MentorChatMode>('mentor');
+
+  // ── AI Plan modal ────────────────────────────────────────────────────────
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [planFolder, setPlanFolder] = useState('');
   const [planTimeFrame, setPlanTimeFrame] = useState('1 month');
   const [isPlanLoading, setIsPlanLoading] = useState(false);
   const [isCommittingPlan, setIsCommittingPlan] = useState(false);
 
+  // ── Dashboard ────────────────────────────────────────────────────────────
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
-  const [dashboardTasks, setDashboardTasks] = useState<any[]>([]);
-  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
-  const [dashboardView, setDashboardView] = useState<'gantt'|'calendar'|'todo'>('gantt');
-  const [togglingTasks, setTogglingTasks] = useState<Record<number, boolean>>({});
 
-  // Pomodoro
-  const [pomodoroMode, setPomodoroMode] = useState<'focus' | 'break'>('focus');
-  const [pomodoroTimeLeft, setPomodoroTimeLeft] = useState(25 * 60);
-  const [isPomodoroActive, setIsPomodoroActive] = useState(false);
+  // ── Phase 2: file indexing ────────────────────────────────────────────────
+  const [activeProjectMeta, setActiveProjectMeta] = useState<ProjectMeta | null>(null);
+  const [indexingFolder, setIndexingFolder] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const [attachedDocsText, setAttachedDocsText] = useState<string>('');
-  const [attachedDocsNames, setAttachedDocsNames] = useState<string[]>([]);
-  const [isDocUploading, setIsDocUploading] = useState(false);
-  const docInputRef = useRef<HTMLInputElement>(null);
+  // ── Phase 3: pipeline ─────────────────────────────────────────────────────
+  const [isPipelineOpen, setIsPipelineOpen] = useState(false);
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const playChime = () => {
-    if (typeof window === 'undefined') return;
-    try {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContext) return;
-        const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-        osc.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5);
-        gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.5);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 1.5);
-    } catch (e) {
-        console.error("Audio block", e);
-    }
-  };
-
-  useEffect(() => {
-    let interval: any = null;
-    if (isPomodoroActive && pomodoroTimeLeft > 0) {
-      interval = setInterval(() => {
-        setPomodoroTimeLeft((time) => time - 1);
-      }, 1000);
-    } else if (isPomodoroActive && pomodoroTimeLeft === 0) {
-      playChime();
-      setIsPomodoroActive(false);
-      if (pomodoroMode === 'focus') {
-          setPomodoroMode('break');
-          setPomodoroTimeLeft(5 * 60);
-      } else {
-          setPomodoroMode('focus');
-          setPomodoroTimeLeft(25 * 60);
-      }
-    }
-    return () => clearInterval(interval);
-  }, [isPomodoroActive, pomodoroTimeLeft, pomodoroMode]);
-
-  useEffect(() => {
-    activeNoteRef.current = activeNote;
-  }, [activeNote]);
-
+  // ── Boot ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchFolders();
     fetchNotes();
     fetchSettings();
-    
-    // Set up polling for sync
+
     const listInterval = setInterval(() => {
       fetchNotes(false);
-    }, 5000); // Poll list every 5s
-    
+      fetchFolders();
+    }, 5000);
     const contentInterval = setInterval(() => {
-      if (activeNoteRef.current) {
-        pollActiveContent(activeNoteRef.current);
-      }
-    }, 1000); // Poll active content every 1s
-    
+      if (activeNoteRef.current) pollActiveContent(activeNoteRef.current);
+    }, 1000);
+
     return () => {
       clearInterval(listInterval);
       clearInterval(contentInterval);
@@ -189,49 +106,24 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (searchQuery.trim()) {
-        performSearch(searchQuery);
-      } else {
-        setSearchResults([]);
-      }
-    }, 400);
+    activeNoteRef.current = activeNote;
+  }, [activeNote]);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  // Check which registered folders have .research_meta.json whenever folders change
+  useEffect(() => {
+    if (folders.length === 0) return;
+    checkProjectFolders(folders);
+  }, [folders]);
 
-  const performSearch = async (query: string) => {
-    setIsSearching(true);
-    try {
-      const res = await fetch(`/api/notes/search?q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      setSearchResults(data.results || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const toggleFolder = (folder: string) => {
-    setCollapsedFolders(prev => {
-      const next = new Set(prev);
-      if (next.has(folder)) {
-        next.delete(folder);
-      } else {
-        next.add(folder);
-      }
-      return next;
-    });
-  };
+  // ── Data fetching ─────────────────────────────────────────────────────────
 
   const fetchFolders = async () => {
     try {
       const res = await fetch('/api/folders');
       const data = await res.json();
       setFolders(data.folders || []);
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -242,8 +134,8 @@ export default function Home() {
       const data = await res.json();
       setNotes(data.notes || []);
       if (data.author) setAuthor(data.author);
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -253,1034 +145,376 @@ export default function Home() {
     try {
       const res = await fetch('/api/settings');
       const data = await res.json();
-      setDeleteUnusedFigures(data.deleteUnusedFigures || false);
+      setDeleteUnusedFigures(data.deleteUnusedFigures ?? false);
+      setLlmProvider(data.llm_provider || 'ollama');
       setOllamaUrl(data.ollama_url || 'http://localhost:11434');
       setOllamaModel(data.ollama_model || 'llama3');
+      setOpenaiApiKey(data.openai_api_key || '');
+      setOpenaiModel(data.openai_model || 'gpt-4o');
+      setAnthropicApiKey(data.anthropic_api_key || '');
+      setAnthropicModel(data.anthropic_model || 'claude-3-5-sonnet-20240620');
+      setGeminiApiKey(data.gemini_api_key || '');
+      setGeminiModel(data.gemini_model || 'gemini-1.5-pro');
+      setMentorPersona(data.mentor_persona || '');
       if (data.author) setAuthor(data.author);
-    } catch (err) {
-      console.error('Failed to fetch settings:', err);
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  const updateSettings = async (updates: any) => {
+  const updateSettings = async (updates: Partial<AppSettings>) => {
     setSettingsLoading(true);
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
+        body: JSON.stringify(updates),
       });
       if (res.ok) {
         const data = await res.json();
-        setDeleteUnusedFigures(data.deleteUnusedFigures || false);
+        setDeleteUnusedFigures(data.deleteUnusedFigures ?? false);
+        setLlmProvider(data.llm_provider || 'ollama');
         setOllamaUrl(data.ollama_url || 'http://localhost:11434');
         setOllamaModel(data.ollama_model || 'llama3');
+        setOpenaiApiKey(data.openai_api_key || '');
+        setOpenaiModel(data.openai_model || 'gpt-4o');
+        setAnthropicApiKey(data.anthropic_api_key || '');
+        setAnthropicModel(data.anthropic_model || 'claude-3-5-sonnet-20240620');
+        setGeminiApiKey(data.gemini_api_key || '');
+        setGeminiModel(data.gemini_model || 'gemini-1.5-pro');
+        setMentorPersona(data.mentor_persona || '');
         if (data.author) setAuthor(data.author);
-      } else {
-        alert('Failed to update settings');
       }
-    } catch (err) {
-      console.error('Failed to update settings:', err);
-      alert('Error updating settings');
+    } catch (e) {
+      console.error(e);
     } finally {
       setSettingsLoading(false);
     }
   };
+
+  // ── Active project meta ───────────────────────────────────────────────────
+
+  const loadProjectMeta = async (folder: string) => {
+    try {
+      const res = await fetch(`/api/research/meta?folder=${encodeURIComponent(folder)}`);
+      setActiveProjectMeta(res.ok ? await res.json() : null);
+    } catch {
+      setActiveProjectMeta(null);
+    }
+  };
+
+  useEffect(() => {
+    if (activeNote?.folder) loadProjectMeta(activeNote.folder);
+    else setActiveProjectMeta(null);
+  }, [activeNote]);
+
+  const checkProjectFolders = async (paths: string[]) => {
+    const results = new Set<string>();
+    for (const f of paths) {
+      try {
+        const res = await fetch(`/api/research/index?folder=${encodeURIComponent(f)}`);
+        if (res.ok) results.add(f);
+      } catch { /* ignore */ }
+    }
+    setProjectFolders(results);
+  };
+
+  // ── Event Handlers ────────────────────────────────────────────────────────
 
   const pollActiveContent = async (note: Note) => {
     if (isEditing) return;
     try {
       const res = await fetch(`/api/notes/content?path=${encodeURIComponent(note.path)}`);
       const data = await res.json();
-      if (data.content !== undefined) {
-        // Only update state if content actually changed to prevent React re-rendering constantly
-        setActiveContent((prev) => prev !== data.content ? data.content : prev);
-      }
-    } catch (err) {
-      // Ignore polling errors
-    }
-  };
-
-  const handleAddFolder = async () => {
-    if (!newFolderPath) return;
-    try {
-      await fetch('/api/folders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderPath: newFolderPath })
-      });
-      setIsModalOpen(false);
-      setNewFolderPath('');
-      await fetchFolders();
-      await fetchNotes();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteFolder = async (folderPath: string) => {
-    try {
-      await fetch('/api/folders', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderPath })
-      });
-      if (activeNote?.folder === folderPath) {
-        setActiveNote(null);
-        setActiveContent('');
-      }
-      await fetchFolders();
-      await fetchNotes();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const openCreateNoteModal = (folderPath: string) => {
-    setTargetFolder(folderPath);
-    setNewNoteName('');
-    setIsNoteModalOpen(true);
-  };
-
-  const handleCreateNote = async () => {
-    if (!newNoteName.trim() || !targetFolder) return;
-    try {
-      const res = await fetch('/api/notes/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderPath: targetFolder, filename: newNoteName, author })
-      });
       if (res.ok) {
-        setIsNoteModalOpen(false);
-        await fetchNotes();
+        if (data.content !== activeContent) setActiveContent(data.content);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
     }
   };
 
   const handleSelectNote = async (note: Note) => {
+    if (isEditing) {
+      if (!confirm('You have unsaved changes. Discard?')) return;
+      setIsEditing(false);
+    }
     setActiveNote(note);
-    setIsEditing(false);
     setContentLoading(true);
     try {
       const res = await fetch(`/api/notes/content?path=${encodeURIComponent(note.path)}`);
       const data = await res.json();
-      setActiveContent(data.content || 'Failed to load content');
-      setEditedContent(data.content || '');
-    } catch (err) {
-      setActiveContent('Error loading note');
-      setEditedContent('');
+      if (res.ok) setActiveContent(data.content);
+      else setActiveContent('Failed to load note.');
+    } catch {
+      setActiveContent('Failed to load note.');
     } finally {
       setContentLoading(false);
     }
-    // Auto-close sidebar on mobile after selecting a note
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      setSidebarOpen(false);
+  };
+
+  const handleSaveNote = async () => {
+    if (!activeNote) return;
+    try {
+      await fetch('/api/notes/content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: activeNote.path, content: editedContent }),
+      });
+      setActiveContent(editedContent);
+      setIsEditing(false);
+    } catch (e) {
+      alert('Failed to save note.');
     }
   };
 
   const handleSummarizeNote = async () => {
     if (!activeNote) return;
+    setIsSummaryOpen(true);
+    setChatMessages((prev) => [...prev, { role: 'user', content: 'Please summarize this note and suggest the next steps for research.' }]);
     try {
-      setContentLoading(true);
       const res = await fetch('/api/notes/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: activeNote.path })
+        body: JSON.stringify({ path: activeNote.path }),
       });
       const data = await res.json();
       if (res.ok) {
         setSummaryContent(data.summary);
-        setIsSummaryOpen(true);
+        setChatMessages((prev) => [...prev, { role: 'assistant', content: data.summary, calendarTasks: data.calendarTasks }]);
       } else {
-        alert(`Error: ${data.error}`);
+        setChatMessages((prev) => [...prev, { role: 'assistant', content: 'Failed to generate summary: ' + data.error }]);
       }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to summarize note');
-    } finally {
-      setContentLoading(false);
+    } catch {
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: 'Failed to connect to summarization service.' }]);
     }
-  };
-
-  const handleSendMessage = async () => {
-    if (!chatInput.trim()) return;
-    
-    const userMsg = { role: 'user' as const, content: chatInput };
-    setChatMessages(prev => [...prev, userMsg]);
-    setChatInput('');
-    setIsChatLoading(true);
-
-    try {
-      const payloadMessages = [...chatMessages, userMsg];
-      if (attachedDocsText) {
-         payloadMessages[payloadMessages.length - 1].content = `[ATTACHED FILE CONTEXT]\n${attachedDocsText}\n\n[USER QUERY]\n${chatInput}`;
-      }
-
-      setAttachedDocsText(''); // clear after sending
-      setAttachedDocsNames([]);
-
-      const res = await fetch('/api/notes/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          messages: payloadMessages,
-          contextFile: activeNote?.path,
-          projectFolder: planFolder || (activeNote ? activeNote.folder : undefined)
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setChatMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
-      } else {
-        setChatMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
-      }
-    } catch (err) {
-      console.error(err);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Failed to connect to AI service.' }]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  };
-
-  const handleMouseDownResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = aiPanelWidth;
-    setIsResizingAi(true);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const currentX = moveEvent.clientX;
-      const diff = startX - currentX;
-      setAiPanelWidth(Math.max(300, Math.min(700, startWidth + diff)));
-    };
-
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      setIsResizingAi(false);
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [aiPanelWidth]);
-
-  const handleStartEditing = () => {
-    setEditedContent(activeContent);
-    setIsEditing(true);
-  };
-
-  const handleCancelEdit = () => {
-    setEditedContent(activeContent);
-    setIsEditing(false);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!activeNote) return;
-    try {
-      const res = await fetch('/api/notes/content', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          path: activeNote.path, 
-          content: editedContent,
-          previousContent: activeContent
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setActiveContent(data.content || editedContent);
-        setEditedContent(data.content || editedContent);
-        setIsEditing(false);
-        await fetchNotes(false);
-      } else {
-        console.error('Save failed:', data.error || 'Unknown');
-      }
-    } catch (err) {
-      console.error('Failed to save note:', err);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLTextAreaElement> | React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLTextAreaElement> | React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent<HTMLTextAreaElement> | React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    if (!isEditing) {
-      alert('Please enter edit mode first');
-      return;
-    }
-
-    const files = Array.from(e.dataTransfer.files);
-    const imageFiles = files.filter(file => 
-      ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'].includes(file.type)
-    );
-
-    if (imageFiles.length === 0) {
-      alert('Please drag and drop image files (PNG, JPG, GIF, WebP, SVG)');
-      return;
-    }
-
-    setUploadingImages(true);
-    try {
-      for (const file of imageFiles) {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const res = await fetch('/api/notes/upload', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          // Insert markdown syntax at cursor position or at the end
-          const textarea = textareaRef.current;
-          if (textarea) {
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const beforeText = editedContent.substring(0, start);
-            const afterText = editedContent.substring(end);
-            const newContent = beforeText + '\n' + data.markdown + '\n' + afterText;
-            setEditedContent(newContent);
-            
-            // Move cursor after inserted text
-            setTimeout(() => {
-              if (textarea) {
-                textarea.focus();
-                const newCursorPos = start + data.markdown.length + 2;
-                textarea.setSelectionRange(newCursorPos, newCursorPos);
-              }
-            }, 0);
-          }
-        } else {
-          const error = await res.json();
-          alert(`Failed to upload ${file.name}: ${error.error}`);
-        }
-      }
-    } catch (err) {
-      console.error('Upload error:', err);
-      alert('Failed to upload images');
-    } finally {
-      setUploadingImages(false);
-    }
-  };
-
-  // Added missing placeholder function
-  const handleAIPlan = () => {
-    // Default to the first folder or active folder
-    if (activeNote) {
-      setPlanFolder(activeNote.folder);
-    } else if (folders.length > 0) {
-      setPlanFolder(folders[0]);
-    }
-    setIsPlanModalOpen(true);
   };
 
   const submitAIPlan = async () => {
-    if (!planFolder) return;
-    setIsPlanModalOpen(false);
+    if (!planFolder || !planTimeFrame) return;
     setIsPlanLoading(true);
-    setChatMessages(prev => [...prev, { role: 'user', content: `Please generate an AI plan for the project: ${planFolder} within ${planTimeFrame}.` }]);
-    setIsSummaryOpen(true);
-
     try {
       const res = await fetch('/api/notes/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          folderPath: planFolder, 
-          timeFrame: planTimeFrame,
-          attachedDocsText 
-        })
+        body: JSON.stringify({ folderPath: planFolder, timeFrame: planTimeFrame, attachedDocsText }),
       });
-      
-      setAttachedDocsText('');
-      setAttachedDocsNames([]);
       const data = await res.json();
-      
       if (res.ok) {
-        let content = data.plan || "";
-        let calendarTasks: CalendarTask[] = [];
-
-        // Parse <CALENDAR_JSON> block if exists
-        const calRegex = /<CALENDAR_JSON>([\s\S]*?)<\/CALENDAR_JSON>/;
-        const match = content.match(calRegex);
-        if (match && match[1]) {
-          try {
-            calendarTasks = JSON.parse(match[1].trim());
-            // Remove the raw JSON block from the chat output
-            content = content.replace(calRegex, '').trim();
-          } catch (e) {
-            console.error("Failed to parse CALENDAR_JSON:", e);
-          }
-        }
-
-        setChatMessages(prev => [...prev, { role: 'assistant', content, calendarTasks }]);
+        setChatMessages([{ role: 'assistant', content: data.plan }]);
+        setIsSummaryOpen(true);
+        setIsPlanModalOpen(false);
       } else {
-        setChatMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
+        alert('Failed to generate plan: ' + data.error);
       }
-    } catch (err) {
-      console.error(err);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Failed to generate plan.' }]);
+    } catch {
+      alert('Failed to connect to planning service.');
     } finally {
       setIsPlanLoading(false);
     }
   };
 
-  // Added Document Upload Handler
-  const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsDocUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const res = await fetch('/api/notes/upload_doc', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setAttachedDocsText(prev => prev + `\n--- File: ${data.filename} ---\n${data.text}`);
-        setAttachedDocsNames(prev => [...prev, data.filename]);
-      } else {
-        alert(`Failed to extract text: ${data.error}`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to upload document');
-    } finally {
-      setIsDocUploading(false);
-      if (docInputRef.current) docInputRef.current.value = '';
-    }
-  };
-
   const handleCommitPlan = async () => {
-    if (!planFolder || chatMessages.length === 0) return;
+    if (!planFolder) return;
     setIsCommittingPlan(true);
-    setChatMessages(prev => [...prev, { role: 'user', content: `Please formalize this discussion and extract the exact Research Plan and To-Do list to my workspace.` }]);
-
     try {
+      const lastAssistantMsg = [...chatMessages].reverse().find(m => m.role === 'assistant');
+      if (!lastAssistantMsg) return;
+
       const res = await fetch('/api/notes/commit_plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          messages: chatMessages,
-          projectFolder: planFolder 
-        })
+        body: JSON.stringify({ folderPath: planFolder, planText: lastAssistantMsg.content }),
       });
-      const data = await res.json();
-      
       if (res.ok) {
-        setChatMessages(prev => [...prev, { role: 'assistant', content: `*(Success: ${data.message})*` }]);
-        await fetchNotes(false); // Refresh sidebar to immediately show 00_Research_Plan.md
+        alert('Research plan committed to project files.');
+        setPlanFolder('');
+        fetchNotes();
       } else {
-        setChatMessages(prev => [...prev, { role: 'assistant', content: `Error saving plan: ${data.error}` }]);
+        alert('Failed to commit plan.');
       }
-    } catch (err) {
-      console.error(err);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Failed to commit the plan to disk.' }]);
+    } catch {
+      alert('Error connecting to server.');
     } finally {
       setIsCommittingPlan(false);
     }
   };
 
-  const handleOpenDashboard = async (force: boolean = false) => {
-    setIsDashboardOpen(true);
-    setIsDashboardLoading(true);
+  const handleIndexFolder = async (folder: string) => {
+    setIndexingFolder(folder);
     try {
-        const res = await fetch('/api/notes/dashboard', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folders, force })
-        });
+      const res = await fetch(`/api/research/index?folder=${encodeURIComponent(folder)}&force=true`, { method: 'POST' });
+      if (res.ok) {
+        loadProjectMeta(folder);
+        alert('Folder indexed successfully.');
+      } else {
         const data = await res.json();
-        if (res.ok && data.tasks) {
-            setDashboardTasks(data.tasks);
-        } else {
-            console.error(data.error);
-        }
-    } catch (e) {
-        console.error(e);
+        alert('Indexing failed: ' + data.error);
+      }
+    } catch {
+      alert('Connection error during indexing.');
     } finally {
-        setIsDashboardLoading(false);
+      setIndexingFolder(null);
     }
   };
 
-  const handleToggleTask = async (idx: number) => {
-    const task = dashboardTasks[idx];
-    if (!task || !task.source_folder || !task.source_file) {
-      alert("Missing source reference for this task.");
-      return;
+  const handleAnalyzeLiterature = async (folder: string) => {
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch('/api/research/analyze_literature', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setChatMessages((prev) => [...prev, { role: 'assistant', content: data.analysis }]);
+        setIsSummaryOpen(true);
+      } else {
+        alert('Literature analysis failed: ' + data.error);
+      }
+    } catch {
+      alert('Connection error during analysis.');
+    } finally {
+      setIsAnalyzing(false);
     }
+  };
 
-    const newStatus = task.status === 'done' ? 'pending' : 'done';
-    setTogglingTasks(prev => ({...prev, [idx]: true}));
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploadingImages(true);
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) formData.append('files', files[i]);
 
     try {
-        const res = await fetch('/api/notes/toggle_task', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                source_folder: task.source_folder,
-                source_file: task.source_file,
-                title: task.title,
-                new_status: newStatus
-            })
+      const res = await fetch('/api/notes/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (res.ok) {
+        let appendText = '\n';
+        data.urls.forEach((url: string, idx: number) => {
+          appendText += `\n![Uploaded Image](${url})\n`;
         });
-        const data = await res.json();
-        if (res.ok) {
-            setDashboardTasks(prev => {
-                const next = [...prev];
-                next[idx] = { ...next[idx], status: newStatus };
-                return next;
-            });
-            fetchNotes(false); // background refresh of editor state
-        } else {
-            alert(`Toggle failed: ${data.error}`);
-        }
+        setEditedContent((prev) => prev + appendText);
+      }
     } catch (e) {
-        console.error(e);
-        alert('Failed to toggle task');
+      alert('Image upload failed.');
     } finally {
-        setTogglingTasks(prev => ({...prev, [idx]: false}));
+      setUploadingImages(false);
     }
   };
 
-  const renderDashboard = () => {
-    if (!isDashboardOpen) return null;
-
-    const today = new Date();
-    const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
-    return (
-      <div className={styles.dashboardOverlay}>
-        <div className={styles.dashboardModal}>
-          <div className={styles.dashboardHeader}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-               <h2><BarChart2 size={20} /> Global Task Dashboard</h2>
-               <button 
-                  onClick={() => handleOpenDashboard(true)} 
-                  disabled={isDashboardLoading}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '4px', color: 'var(--text-secondary)', cursor: isDashboardLoading ? 'wait' : 'pointer', fontSize: '0.8rem', transition: 'background 0.2s' }}
-                  title="Force refresh AI project tasks"
-                >
-                  <RefreshCw size={14} style={{ animation: isDashboardLoading ? 'spinAi 1s linear infinite' : 'none' }}/> Sync Tasks
-                </button>
-            </div>
-            <button className={styles.iconBtn} onClick={() => setIsDashboardOpen(false)} title="Close Dashboard">
-              <X size={20} />
-            </button>
-          </div>
-          <div className={styles.dashboardBody}>
-            <div className={styles.dashboardSidebar}>
-              <button 
-                className={`${styles.dashboardFilterBtn} ${dashboardView === 'gantt' ? styles.active : ''}`}
-                onClick={() => setDashboardView('gantt')}
-              >
-                <Layers size={16} /> Timeline (Gantt)
-              </button>
-              <button 
-                className={`${styles.dashboardFilterBtn} ${dashboardView === 'calendar' ? styles.active : ''}`}
-                onClick={() => setDashboardView('calendar')}
-              >
-                <Calendar size={16} /> Calendar
-              </button>
-              <button 
-                className={`${styles.dashboardFilterBtn} ${dashboardView === 'todo' ? styles.active : ''}`}
-                onClick={() => setDashboardView('todo')}
-              >
-                <CheckSquare size={16} /> Global To-Do List
-              </button>
-            </div>
-            <div className={styles.dashboardContent}>
-              {isDashboardLoading ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
-                  <div className={styles.aiChatSpinner} style={{ width: 30, height: 30, borderWidth: 3, marginBottom: 15 }} />
-                  <p>AI is evaluating {folders.length} workspaces...</p>
-                </div>
-              ) : dashboardView === 'gantt' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <div style={{ marginBottom: '15px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '5px' }}>
-                      <span>Workspace Progress</span>
-                      <span>
-                        {dashboardTasks.length > 0 ? Math.round((dashboardTasks.filter(t => t.status === 'done').length / dashboardTasks.length) * 100) : 0}%
-                      </span>
-                    </div>
-                    <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ 
-                        width: `${dashboardTasks.length > 0 ? (dashboardTasks.filter(t => t.status === 'done').length / dashboardTasks.length) * 100 : 0}%`, 
-                        height: '100%', 
-                        background: 'var(--accent-base)', 
-                        transition: 'width 0.3s ease' 
-                      }} />
-                    </div>
-                  </div>
-                  <div className={styles.ganttContainer} style={{ flex: 1, margin: 0 }}>
-                    <div className={styles.ganttHeader}>
-                      <div className={styles.ganttTaskLabel}>Task</div>
-                      <div className={styles.ganttTimeline}>
-                        <div className={styles.ganttMonthLabel}>This Month</div>
-                        <div className={styles.ganttMonthLabel}>Next Month</div>
-                        <div className={styles.ganttMonthLabel}>Month 3</div>
-                      </div>
-                    </div>
-                    {dashboardTasks.map((t, idx) => {
-                      const s = new Date(t.start || new Date());
-                      const e = new Date(t.end || new Date(s.getTime() + 1000 * 60 * 60 * 24 * 7));
-                      const offset = Math.max(0, (s.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                      const duration = Math.max(1, (e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
-                      const left = Math.min(100, (offset / 90) * 100);
-                      const width = Math.min(100 - left, (duration / 90) * 100);
-                      
-                      const isCritical = t.importance >= 4 && t.urgency >= 4;
-                      const isDone = t.status === 'done';
-                      let bgColor = isCritical ? 'rgba(239,68,68,0.8)' : (t.importance >= 3 ? 'rgba(245,158,11,0.8)' : 'rgba(59,130,246,0.8)');
-                      if (isDone) bgColor = 'rgba(16, 185, 129, 0.4)'; // green with low opacity
-                      
-                      return (
-                        <div key={idx} className={styles.ganttRow}>
-                          <div className={styles.ganttTaskLabel} style={{ opacity: isDone ? 0.5 : 1 }}>
-                            <div className={styles.ganttTaskTitle} style={{ textDecoration: isDone ? 'line-through' : 'none' }}>{t.title}</div>
-                            <div className={styles.ganttTaskProject}>{t.project}</div>
-                          </div>
-                          <div className={styles.ganttBarArea}>
-                            <div className={styles.ganttBar} style={{ left: `${left}%`, width: `${width}%`, background: bgColor, border: isDone ? '1px dashed rgba(255,255,255,0.5)' : 'none' }}>
-                              {isDone ? '✓ Completed' : t.title}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : dashboardView === 'todo' ? (
-                <div style={{ display: 'flex', gap: '20px', height: '100%' }}>
-                  <div style={{ flex: 1, background: 'rgba(30, 30, 34, 0.4)', borderRadius: '8px', padding: '20px', border: '1px solid rgba(255, 255, 255, 0.05)', overflowY: 'auto' }}>
-                    <h3 style={{ marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', color: 'var(--text-primary)' }}>Global To-Do List</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
-                      {dashboardTasks.map((t, idx) => {
-                        const isCritical = t.importance >= 4 && t.urgency >= 4;
-                        const isDone = t.status === 'done';
-                        return (
-                          <div key={idx} style={{ 
-                            display: 'flex', alignItems: 'flex-start', gap: '15px', 
-                            padding: '12px', background: 'rgba(255,255,255,0.02)', 
-                            borderRadius: '6px', borderLeft: `3px solid ${isCritical ? '#ef4444' : '#3b82f6'}`,
-                            opacity: isDone ? 0.6 : 1
-                          }}>
-                             <input 
-                                type="checkbox" 
-                                checked={isDone}
-                                onChange={() => handleToggleTask(idx)}
-                                disabled={togglingTasks[idx]}
-                                style={{ marginTop: '4px', transform: 'scale(1.2)', cursor: togglingTasks[idx] ? 'wait' : 'pointer' }}
-                             />
-                             <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 500, textDecoration: isDone ? 'line-through' : 'none' }}>
-                                  {t.title}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                  Project: {t.project} &nbsp;|&nbsp; File: {t.source_file}
-                                </div>
-                             </div>
-                             <div style={{ fontSize: '0.7rem', background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: '4px', color: 'var(--text-muted)' }}>
-                               S: {t.importance} | U: {t.urgency}
-                             </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                  <div style={{ width: '320px', background: 'rgba(30, 30, 34, 0.6)', borderRadius: '8px', padding: '25px', border: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                     <h3 style={{ marginTop: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}><Timer size={20}/> Focus Timer</h3>
-                     
-                     <div style={{ display: 'flex', gap: '10px', marginTop: '10px', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '8px' }}>
-                        <button 
-                          onClick={() => { setIsPomodoroActive(false); setPomodoroMode('focus'); setPomodoroTimeLeft(25*60); }}
-                          style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: pomodoroMode === 'focus' ? 'var(--accent-base)' : 'transparent', color: pomodoroMode === 'focus' ? 'white' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}
-                        >Focus (25m)</button>
-                        <button 
-                          onClick={() => { setIsPomodoroActive(false); setPomodoroMode('break'); setPomodoroTimeLeft(5*60); }}
-                          style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: pomodoroMode === 'break' ? 'var(--accent-base)' : 'transparent', color: pomodoroMode === 'break' ? 'white' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}
-                        >Break (5m)</button>
-                     </div>
-
-                     <div style={{ fontSize: '3.5rem', fontWeight: 700, fontFamily: 'monospace', margin: '30px 0', color: pomodoroMode === 'focus' ? '#ef4444' : '#10b981', textShadow: '0 0 20px rgba(255,255,255,0.1)' }}>
-                        {Math.floor(pomodoroTimeLeft / 60).toString().padStart(2, '0')}:{(pomodoroTimeLeft % 60).toString().padStart(2, '0')}
-                     </div>
-
-                     <div style={{ display: 'flex', gap: '15px' }}>
-                        <button 
-                          onClick={() => setIsPomodoroActive(!isPomodoroActive)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '20px', border: 'none', background: isPomodoroActive ? 'rgba(255,255,255,0.1)' : 'var(--accent-base)', color: 'white', cursor: 'pointer', fontSize: '0.95rem', transition: 'all 0.2s', fontWeight: 600 }}
-                        >
-                          {isPomodoroActive ? <Pause size={18}/> : <Play size={18}/>}
-                          {isPomodoroActive ? 'Pause' : 'Start'}
-                        </button>
-                        <button 
-                          onClick={() => { setIsPomodoroActive(false); setPomodoroTimeLeft(pomodoroMode === 'focus' ? 25*60 : 5*60); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.95rem', transition: 'all 0.2s' }}
-                        >
-                          <RotateCcw size={18}/> Reset
-                        </button>
-                     </div>
-                  </div>
-                </div>
-              ) : (
-                <div className={styles.calendarGrid}>
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                     <div key={d} className={styles.calendarHeaderDay}>{d}</div>
-                  ))}
-                  {Array.from({ length: 35 }).map((_, i) => {
-                     const cellDate = new Date(today);
-                     cellDate.setDate(today.getDate() - today.getDay() + i);
-                     const cellTasks = dashboardTasks.filter(t => {
-                       const ts = new Date(t.start || today);
-                       return ts.getDate() === cellDate.getDate() && ts.getMonth() === cellDate.getMonth();
-                     });
-                     return (
-                       <div key={i} className={styles.calendarCell}>
-                         <div className={styles.calendarDateNum}>{cellDate.getDate()}</div>
-                         {cellTasks.map((t, idx) => {
-                           const isCritical = t.importance >= 4 && t.urgency >= 4;
-                           return (
-                             <div key={idx} className={styles.calendarEvent} style={{ background: isCritical ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.6)' }}>
-                               {t.title}
-                             </div>
-                           );
-                         })}
-                       </div>
-                     );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Use TypeScript generic carefully to prevent parser mixups
-  const groupedNotes: { [key: string]: Note[] } = {};
-  for (const note of notes) {
-    if (!groupedNotes[note.folder]) {
-      groupedNotes[note.folder] = [];
-    }
-    groupedNotes[note.folder].push(note);
-  }
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className={styles.container}>
-      {/* Sidebar */}
-      <aside 
-        className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : styles.sidebarClosed} ${sidebarCollapsed ? styles.sidebarCollapsed : ''}`}
-      >
-        <div className={styles.sidebarHeader}>
-          <div className={styles.logo}>
-            <BookOpen size={24} />
-            {!sidebarCollapsed && <><span>Lab</span>Notes</>}
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button 
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)} 
-              title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
-            >
-              {sidebarCollapsed ? <ChevronRight size={20} /> : <Menu size={20} />}
-            </button>
-            {typeof window !== 'undefined' && window.innerWidth < 768 && (
-               <button onClick={() => setSidebarOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                 <X size={20} color="var(--text-secondary)" />
-               </button>
-            )}
-          </div>
-        </div>
-        
-        <div className={styles.searchContainer}>
-          {(!sidebarCollapsed || searchQuery) && (
-            <input 
-              type="text" 
-              placeholder="Search notes..." 
-              className={styles.searchInput}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          )}
-        </div>
+      <Sidebar
+        notes={notes}
+        folders={folders}
+        activeNote={activeNote}
+        sidebarCollapsed={sidebarCollapsed}
+        author={author}
+        projectFolders={projectFolders}
+        indexingFolder={indexingFolder}
+        onSelectNote={handleSelectNote}
+        onSidebarCollapse={setSidebarCollapsed}
+        onFolderAdded={fetchFolders}
+        onFolderDeleted={fetchFolders}
+        onNoteCreated={fetchNotes}
+        onOpenDashboard={() => setIsDashboardOpen(true)}
+        onAIPlan={(f) => { setPlanFolder(f); setIsPlanModalOpen(true); }}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onIndexFolder={handleIndexFolder}
+      />
 
-        <div className={styles.foldersList}>
-          {loading && !searchQuery && <div style={{ color: 'var(--text-muted)' }}>Loading...</div>}
-          
-          {searchQuery && (
-            <div className={styles.folderSection}>
-              <div className={styles.folderTitle}>
-                <span>Search Results</span>
-              </div>
-              {isSearching ? (
-                 <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Searching...</div>
-              ) : searchResults.length === 0 ? (
-                 <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No results.</div>
-              ) : (
-                searchResults.map((note) => (
-                  <div 
-                    key={note.path} 
-                    className={`${styles.noteItem} ${activeNote?.path === note.path ? styles.active : ''}`}
-                    onClick={() => handleSelectNote(note)}
-                    style={{ alignItems: 'flex-start', flexDirection: 'column' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                      <FileText size={16} className={styles.fileIcon} />
-                      <span className={styles.noteName}>
-                        {note.relativePath}
-                      </span>
-                    </div>
-                    {note.snippet && (
-                      <div className={styles.searchSnippet}>
-                         {note.snippet}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {!sidebarCollapsed && (
-            <button 
-              className={styles.editBtn} 
-              style={{ width: '90%', margin: '0 auto 15px', display: 'flex', justifyContent: 'center', background: 'rgba(139, 92, 246, 0.1)', color: 'var(--accent-base)' }} 
-              onClick={() => handleOpenDashboard()}
-            >
-              <BarChart2 size={16}/> Global Dashboard
-            </button>
-          )}
-
-          {!searchQuery && Object.entries(groupedNotes).map(([folder, folderNotes]) => (
-            <div key={folder} className={styles.folderSection}>
-              <div className={styles.folderTitle}>
-                <div 
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', flex: 1, overflow: 'hidden' }}
-                  onClick={() => toggleFolder(folder)}
-                >
-                  {collapsedFolders.has(folder) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                  {!sidebarCollapsed && (
-                    <span title={folder} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
-                      {folder.split(/[/\\]/).pop() || folder}
-                    </span>
-                  )}
-                </div>
-                {!sidebarCollapsed && (
-                  <div style={{ display: 'flex', gap: '0.6rem' }}>
-                    <button onClick={() => openCreateNoteModal(folder)} title="New Note" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                      <Plus size={14} />
-                    </button>
-                    <button onClick={() => handleDeleteFolder(folder)} title="Remove Folder" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
-              {!collapsedFolders.has(folder) && folderNotes.map((note) => (
-                <div 
-                  key={note.path} 
-                  className={`${styles.noteItem} ${activeNote?.path === note.path ? styles.active : ''}`}
-                  onClick={() => handleSelectNote(note)}
-                >
-                  <FileText size={16} className={styles.fileIcon} />
-                  {!sidebarCollapsed && (
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {note.relativePath}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          ))}
-          {!loading && !searchQuery && Object.keys(groupedNotes).length === 0 && (
-            <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '2rem' }}>
-              No notes found.<br/> Add a folder below.
-            </div>
-          )}
-        </div>
-
-        <div className={styles.sidebarFooter}>
-          <button 
-            className={styles.addBtn} 
-            onClick={() => handleAIPlan()}
-            title="AI Daily Plan"
-            style={{ marginBottom: '0.5rem', backgroundColor: 'var(--accent-base)', color: 'white' }}
-          >
-            <Calendar size={18} /> {!sidebarCollapsed && 'AI Plan'}
-          </button>
-          <button 
-            className={styles.addBtn} 
-            onClick={() => setIsSettingsOpen(true)}
-            title="Settings"
-            style={{ marginBottom: '0.5rem' }}
-          >
-            <Settings size={18} /> {!sidebarCollapsed && 'Settings'}
-          </button>
-          <button className={styles.addBtn} onClick={() => setIsModalOpen(true)}>
-            <FolderPlus size={18} /> {!sidebarCollapsed && 'Add Folder'}
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
       <main className={styles.main}>
         <div className={styles.topbar}>
-          {!sidebarOpen && (
-            <button onClick={() => setSidebarOpen(true)} style={{ marginRight: '1rem', color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer' }}>
-              <Menu size={20} />
-            </button>
-          )}
-          <span>{activeNote ? activeNote.relativePath : 'Select a note to read'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+            <span style={{ fontWeight: 500 }}>{activeNote ? activeNote.relativePath : 'Select a note to begin'}</span>
+            <NotificationBell />
+          </div>
         </div>
-        
+
         <div className={styles.contentWrapper}>
           {contentLoading && (
-            <div className={styles.loading}>
-              <BookOpen size={32} />
-            </div>
+            <div className={styles.loading}><BookOpen size={32} /></div>
           )}
-          
+
           {!contentLoading && activeNote && (
             <div style={{ display: 'flex', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className={styles.noteMeta}>
-                  Author: <strong>{author || 'Lab User'}</strong> &ensp;•&ensp; Created on {new Date(activeNote.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                  Author: <strong>{author || 'Lab User'}</strong> &ensp;•&ensp;
+                  Created on {new Date(activeNote.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                 </div>
+
+                {/* File index status bar */}
+                <FileIndexStatus
+                  folder={activeNote.folder}
+                  projectMeta={activeProjectMeta}
+                  isIndexing={indexingFolder === activeNote.folder}
+                  onIndex={handleIndexFolder}
+                  onAnalyzeLiterature={handleAnalyzeLiterature}
+                  isAnalyzing={isAnalyzing}
+                />
                 <div className={styles.editorHeader}>
                   {!isEditing ? (
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button className={styles.editBtn} onClick={handleStartEditing}>
-                        <Edit size={16} />
-                        Edit
+                      <button className={styles.editBtn} onClick={() => { setEditedContent(activeContent); setIsEditing(true); }}>
+                        <Edit size={16} /> Edit
                       </button>
-                      <button 
-                        className={styles.editBtn} 
+                      <button
+                        className={styles.editBtn}
                         onClick={() => setIsSummaryOpen(true)}
-                        title="Open AI Chat"
                         style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
                       >
-                        <MessageCircle size={16} />
-                        Chat
+                        <MessageCircle size={16} /> Chat
                       </button>
-                      <button 
-                        className={styles.editBtn} 
+                      <button
+                        className={styles.editBtn}
                         onClick={handleSummarizeNote}
-                        title="Summarize with AI"
                         style={{ backgroundColor: 'var(--accent-base)', color: 'white' }}
                       >
-                        <Sparkles size={16} />
-                        Summarize
+                        <Sparkles size={16} /> Summarize
                       </button>
+                      {activeProjectMeta && (
+                        <button
+                          className={styles.editBtn}
+                          onClick={() => setIsPipelineOpen(true)}
+                          style={{ backgroundColor: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}
+                        >
+                          <GitBranch size={16} /> Pipeline
+                        </button>
+                      )}
                     </div>
                   ) : (
-                    <div className={styles.editorActions}>
-                      <button className={styles.cancelEditBtn} onClick={handleCancelEdit}>
-                        <XCircle size={16} />
-                        Cancel
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button className={styles.saveBtn} onClick={handleSaveNote}>
+                        <Save size={16} /> Save Changes
                       </button>
-                      <button className={styles.saveEditBtn} onClick={handleSaveEdit}>
-                        <Save size={16} />
-                        Save
+                      <button className={styles.cancelBtn} onClick={() => setIsEditing(false)}>
+                        <XCircle size={16} /> Cancel
                       </button>
+                      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                        <label className={styles.uploadBtn}>
+                          {uploadingImages ? 'Uploading...' : 'Add Figures'}
+                          <input type="file" multiple accept="image/*" onChange={handleFileUpload} disabled={uploadingImages} style={{ display: 'none' }} />
+                        </label>
+                      </div>
                     </div>
                   )}
                 </div>
-                {isEditing && (
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                    💡 Tip: Drag and drop images to insert them, or use Markdown syntax: <code style={{ background: 'var(--bg-card)', padding: '0.2em 0.4em', borderRadius: '2px' }}>![alt text](/figures/image.png)</code>
-                  </div>
-                )}
+
                 {isEditing ? (
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    style={{
-                      position: 'relative',
-                      borderRadius: '4px',
-                      overflow: 'hidden'
-                    }}
-                  >
+                  <div className={styles.editorWrapper}>
                     <textarea
-                      ref={textareaRef}
-                      className={styles.editorTextarea}
+                      className={styles.editor}
                       value={editedContent}
                       onChange={(e) => setEditedContent(e.target.value)}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      style={{
-                        borderColor: isDragging ? 'var(--accent-base)' : undefined,
-                        borderWidth: isDragging ? '2px' : undefined,
-                        boxShadow: isDragging ? '0 0 0 3px rgba(139, 92, 246, 0.1)' : undefined,
-                        transition: 'all 200ms ease'
-                      }}
-                      disabled={uploadingImages}
+                      spellCheck={false}
                     />
                     {isDragging && (
-                      <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: 'rgba(139, 92, 246, 0.05)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: '4px',
-                        pointerEvents: 'none',
-                        border: '2px dashed var(--accent-base)'
-                      }}>
-                        <div style={{ textAlign: 'center', color: 'var(--accent-base)', fontWeight: 500 }}>
-                          Drop images here to insert
-                        </div>
-                      </div>
-                    )}
-                    {uploadingImages && (
-                      <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: '4px',
-                        pointerEvents: 'none'
-                      }}>
-                        <div style={{ color: 'white', fontWeight: 500 }}>
-                          Uploading images...
-                        </div>
-                      </div>
+                      <div className={styles.dragOverlay}>Drop image to upload and embed</div>
                     )}
                   </div>
                 ) : (
@@ -1288,380 +522,293 @@ export default function Home() {
                 )}
               </div>
               <TableOfContents content={isEditing ? editedContent : activeContent} />
-
             </div>
           )}
 
           {!contentLoading && !activeNote && (
             <div className={styles.emptyState}>
               <BookOpen className={styles.emptyStateIcon} />
-              <h2>No Entry Selected</h2>
-              <p>Select a note from the sidebar or add a new folder to begin.</p>
+              <h2>Research Mentor</h2>
+              <p>Select a note from the sidebar or add a research folder to begin.</p>
             </div>
           )}
         </div>
       </main>
 
-      {/* AI Summary & Chat Panel */}
+      {/* AI Panel */}
       {isSummaryOpen && (
-        <div 
-          className={styles.aiPanel}
-          style={{ width: `${aiPanelWidth}px`, transition: isResizingAi ? 'none' : 'width 0.2s ease' }}
-        >
-          {/* Resize Handle */}
-          <div 
-            className={styles.aiPanelResizeHandle}
-            onMouseDown={handleMouseDownResize}
-          >
-            <GripVertical size={12} />
-          </div>
-
-          {/* Panel Header */}
-          <div className={styles.aiPanelHeader}>
-            <div className={styles.aiPanelTitle}>
-              <div className={styles.aiPanelTitleIcon}>
-                <Sparkles size={16} />
-              </div>
-              <span>AI Assistant</span>
-            </div>
-            <button 
-              className={styles.aiPanelClose}
-              onClick={() => setIsSummaryOpen(false)}
-              title="Close panel"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* Summary Content */}
-          <div className={styles.aiPanelContent}>
-            {summaryContent && (
-              <div className={styles.aiSummarySection}>
-                <div className={styles.aiSectionLabel}>
-                  <Sparkles size={12} />
-                  <span>Summary</span>
-                </div>
-                <div className={styles.aiSummaryBody}>
-                  <MarkdownRenderer content={summaryContent} />
-                </div>
-              </div>
-            )}
-
-            {/* Chat Messages */}
-            {chatMessages.length > 0 && (
-              <div className={styles.aiChatSection}>
-                <div className={styles.aiSectionLabel}>
-                  <MessageCircle size={12} />
-                  <span>Conversation</span>
-                </div>
-                <div className={styles.aiChatMessages}>
-                  {chatMessages.map((msg, i) => (
-                    <div 
-                      key={i} 
-                      className={`${styles.aiChatBubble} ${msg.role === 'user' ? styles.aiChatUser : styles.aiChatAssistant}`}
-                    >
-                      <div className={styles.aiChatRole}>
-                        {msg.role === 'user' ? 'You' : 'AI'}
-                      </div>
-                      <div className={styles.aiChatText}>
-                        <MarkdownRenderer content={msg.content} />
-                      </div>
-                      {msg.calendarTasks && msg.calendarTasks.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-base)' }}>Suggested Calendar Tasks:</span>
-                          {msg.calendarTasks.map((t, idx) => {
-                            // Outlook Deep Link
-                            const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?subject=${encodeURIComponent(t.title)}&body=${encodeURIComponent(t.description)}&startdt=${encodeURIComponent(t.start)}&enddt=${encodeURIComponent(t.end)}`;
-                            // Google Deep Link
-                            const gStart = t.start.replace(/[-:]/g, '');
-                            const gEnd = t.end.replace(/[-:]/g, '');
-                            const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(t.title)}&details=${encodeURIComponent(t.description)}&dates=${gStart}/${gEnd}`;
-                            
-                            return (
-                              <div key={idx} style={{ background: 'rgba(255,255,255,0.05)', padding: '8px', borderRadius: '6px' }}>
-                                <div style={{ fontSize: '0.8rem', fontWeight: 500 }}>{t.title}</div>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px' }}>{new Date(t.start).toLocaleDateString()}</div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                  <a href={outlookUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: '#0078d4', textDecoration: 'none', background: 'rgba(0,120,212,0.1)', padding: '4px 8px', borderRadius: '4px' }}>
-                                    <Calendar size={12} /> Outlook
-                                  </a>
-                                  <a href={googleUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: '#ea4335', textDecoration: 'none', background: 'rgba(234,67,53,0.1)', padding: '4px 8px', borderRadius: '4px' }}>
-                                    <Calendar size={12} /> Google
-                                  </a>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <div ref={chatEndRef} />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Chat Input */}
-          <div className={styles.aiPanelFooter}>
-            {attachedDocsNames.length > 0 && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--accent-base)', marginBottom: '8px' }}>
-                📎 Attached: {attachedDocsNames.join(', ')}
-              </div>
-            )}
-            <div className={styles.aiChatInputWrapper}>
-              <input 
-                type="text" 
-                className={styles.aiChatInput}
-                placeholder="Ask about this note..." 
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-              />
-              <input type="file" ref={docInputRef} style={{ display: 'none' }} onChange={handleDocUpload} />
-              <button 
-                className={styles.aiChatSendBtn}
-                style={{ background: 'transparent', color: 'var(--text-muted)' }}
-                onClick={() => docInputRef.current?.click()}
-                disabled={isDocUploading}
-                title="Attach Document"
-              >
-                {isDocUploading ? <div className={styles.aiChatSpinner} /> : <Paperclip size={16} />}
-              </button>
-              {planFolder && (
-                <button 
-                  className={styles.aiChatSendBtn}
-                  style={{ background: 'transparent', color: 'var(--accent-base)', fontWeight: 600, padding: '0 8px', width: 'auto' }}
-                  onClick={handleCommitPlan}
-                  disabled={isCommittingPlan}
-                  title="Accept & Commit Plan"
-                >
-                  {isCommittingPlan ? <div className={styles.aiChatSpinner} /> : <><Save size={16} /><span style={{marginLeft: '4px', fontSize: '0.75rem'}}>Commit</span></>}
-                </button>
-              )}
-              <button 
-                className={styles.aiChatSendBtn}
-                onClick={handleSendMessage}
-                disabled={isChatLoading || (!chatInput.trim() && !attachedDocsText)}
-                title="Send message"
-              >
-                {isChatLoading ? (
-                  <div className={styles.aiChatSpinner} />
-                ) : (
-                  <Send size={14} />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+        <MentorChatPanel
+          summaryContent={summaryContent}
+          chatMessages={chatMessages}
+          activeNote={activeNote}
+          planFolder={planFolder}
+          isCommittingPlan={isCommittingPlan}
+          attachedDocsText={attachedDocsText}
+          attachedDocsNames={attachedDocsNames}
+          projectMeta={activeProjectMeta}
+          author={author}
+          chatMode={chatMode}
+          onDocAttached={(text, name) => {
+            setAttachedDocsText((prev) => prev + text);
+            setAttachedDocsNames((prev) => [...prev, name]);
+          }}
+          onClearAttachments={() => { setAttachedDocsText(''); setAttachedDocsNames([]); }}
+          onMessagesChange={setChatMessages}
+          onCommitPlan={handleCommitPlan}
+          onNoteCreated={fetchNotes}
+          onModeChange={setChatMode}
+          onClose={() => setIsSummaryOpen(false)}
+        />
       )}
 
-      {/* AI Plan Options Modal */}
+      {/* Dashboard */}
+      {isDashboardOpen && (
+        <Dashboard
+          folders={folders}
+          onClose={() => setIsDashboardOpen(false)}
+        />
+      )}
+
+      {/* Research Pipeline */}
+      {isPipelineOpen && activeProjectMeta && activeNote && (
+        <ResearchPipelineView
+          folder={activeNote.folder}
+          meta={activeProjectMeta}
+          onClose={() => setIsPipelineOpen(false)}
+          onMetaChange={(updated) => setActiveProjectMeta(updated)}
+          onOpenChat={(message) => {
+            setChatMessages((prev) => [...prev, { role: 'user', content: message }]);
+            setIsSummaryOpen(true);
+            setIsPipelineOpen(false);
+          }}
+        />
+      )}
+
+      {/* AI Plan modal */}
       {isPlanModalOpen && (
         <div className={styles.modalOverlay} onClick={() => setIsPlanModalOpen(false)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h3>Generate AI Research Plan</h3>
             <p>Select the project folder and define a timeframe to generate SMART tasks aimed at publishing a top journal paper.</p>
-            
+
             <label style={{ display: 'block', margin: '15px 0 5px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Project Folder</label>
-            <select 
-              value={planFolder} 
+            <select
+              value={planFolder}
               onChange={(e) => setPlanFolder(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && planFolder && planTimeFrame) submitAIPlan(); }}
               style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
             >
               <option value="" disabled>Select a folder...</option>
-              {folders.map(f => (
+              {folders.map((f) => (
                 <option key={f} value={f}>{f}</option>
               ))}
             </select>
 
             <label style={{ display: 'block', margin: '15px 0 5px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Timeframe</label>
-            <input 
-              type="text" 
-              placeholder="e.g. 2 weeks, 3 months, 1 year..." 
+            <input
+              type="text"
+              placeholder="e.g. 2 weeks, 3 months, 1 year..."
               value={planTimeFrame}
               onChange={(e) => setPlanTimeFrame(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && planFolder && planTimeFrame) submitAIPlan(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && planFolder) submitAIPlan(); }}
               style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
             />
 
             <div className={styles.modalActions}>
-              <button className={styles.cancelBtn} onClick={() => setIsPlanModalOpen(false)}>
-                Cancel
-              </button>
-              <button 
-                className={styles.saveBtn} 
-                onClick={submitAIPlan}
-                disabled={!planFolder || !planTimeFrame}
-              >
-                Generate Plan
+              <button className={styles.cancelBtn} onClick={() => setIsPlanModalOpen(false)}>Cancel</button>
+              <button className={styles.saveBtn} onClick={submitAIPlan} disabled={!planFolder || !planTimeFrame}>
+                {isPlanLoading ? 'Generating...' : 'Generate Plan'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Add Folder Modal */}
-      {isModalOpen && (
-        <div className={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <h3>Add Lab Folder</h3>
-            <p>Enter the absolute path to your local folder containing .md files.</p>
-            <input 
-              type="text" 
-              placeholder="/Users/lei_lei/Documents/Lab" 
-              value={newFolderPath}
-              onChange={(e) => setNewFolderPath(e.target.value)}
-              autoFocus
-            />
-            <div className={styles.modalActions}>
-              <button className={styles.cancelBtn} onClick={() => setIsModalOpen(false)}>
-                Cancel
-              </button>
-              <button className={styles.saveBtn} onClick={handleAddFolder}>
-                Add Folder
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Create Note Modal */}
-      {isNoteModalOpen && (
-        <div className={styles.modalOverlay} onClick={() => setIsNoteModalOpen(false)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <h3>New Lab Note</h3>
-            <p>Enter the filename for your new note. It will be added to <strong>{targetFolder.split(/[/\\]/).pop()}</strong>.</p>
-            <input 
-              type="text" 
-              placeholder="e.g. My Next Experiment" 
-              value={newNoteName}
-              onChange={(e) => setNewNoteName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateNote()}
-              autoFocus
-            />
-            <div className={styles.modalActions}>
-              <button className={styles.cancelBtn} onClick={() => setIsNoteModalOpen(false)}>
-                Cancel
-              </button>
-              <button className={styles.saveBtn} onClick={handleCreateNote}>
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Settings Modal */}
+      {/* Settings modal */}
       {isSettingsOpen && (
         <div className={styles.modalOverlay} onClick={() => setIsSettingsOpen(false)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <h3>Settings</h3>
-            
-            <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={deleteUnusedFigures}
-                  onChange={(e) => {
-                    setDeleteUnusedFigures(e.target.checked);
-                    updateSettings({ deleteUnusedFigures: e.target.checked });
-                  }}
-                  disabled={settingsLoading}
-                  style={{ cursor: 'pointer', width: '18px', height: '18px' }}
-                />
-                <div>
-                  <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    Delete Unused Figures
+          <div className={styles.modal} style={{ maxWidth: '600px', width: '90%' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3>Settings</h3>
+              <button onClick={() => setIsSettingsOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div style={{ maxHeight: '70vh', overflowY: 'auto', paddingRight: '10px' }}>
+              <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={deleteUnusedFigures}
+                    onChange={(e) => { setDeleteUnusedFigures(e.target.checked); updateSettings({ deleteUnusedFigures: e.target.checked }); }}
+                    disabled={settingsLoading}
+                    style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>Delete Unused Figures</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                      Auto-remove figure files no longer referenced in any markdown file
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                    Automatically remove figure files when they are no longer referenced in any markdown file
-                  </div>
+                </label>
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>LLM Provider</label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {(['ollama', 'openai', 'anthropic', 'gemini'] as LLMProvider[]).map(p => (
+                    <button
+                      key={p}
+                      onClick={() => { setLlmProvider(p); updateSettings({ llm_provider: p }); }}
+                      style={{
+                        padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                        background: llmProvider === p ? 'rgba(139,92,246,0.15)' : 'var(--bg-elevated)',
+                        color: llmProvider === p ? 'var(--accent-base)' : 'var(--text-muted)',
+                        cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, textTransform: 'capitalize'
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
                 </div>
-              </label>
-            </div>
+              </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                Ollama API URL
-              </label>
-              <input 
-                type="text" 
-                placeholder="http://localhost:11434" 
-                value={ollamaUrl}
-                onChange={(e) => {
-                  setOllamaUrl(e.target.value);
-                  updateSettings({ ollama_url: e.target.value });
-                }}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  background: 'var(--bg-card)',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'inherit'
-                }}
-              />
-            </div>
+              {llmProvider === 'ollama' && (
+                <>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Ollama API URL</label>
+                    <input
+                      className={styles.detailInput}
+                      value={ollamaUrl}
+                      onChange={(e) => setOllamaUrl(e.target.value)}
+                      onBlur={() => updateSettings({ ollama_url: ollamaUrl })}
+                      placeholder="http://localhost:11434"
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Ollama Model</label>
+                    <input
+                      className={styles.detailInput}
+                      value={ollamaModel}
+                      onChange={(e) => setOllamaModel(e.target.value)}
+                      onBlur={() => updateSettings({ ollama_model: ollamaModel })}
+                      placeholder="llama3"
+                    />
+                  </div>
+                </>
+              )}
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                Ollama Model
-              </label>
-              <input 
-                type="text" 
-                placeholder="llama3" 
-                value={ollamaModel}
-                onChange={(e) => {
-                  setOllamaModel(e.target.value);
-                  updateSettings({ ollama_model: e.target.value });
-                }}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  background: 'var(--bg-card)',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'inherit'
-                }}
-              />
-            </div>
+              {llmProvider === 'openai' && (
+                <>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>OpenAI API Key</label>
+                    <input
+                      type="password"
+                      className={styles.detailInput}
+                      value={openaiApiKey}
+                      onChange={(e) => setOpenaiApiKey(e.target.value)}
+                      onBlur={() => updateSettings({ openai_api_key: openaiApiKey })}
+                      placeholder="sk-..."
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Model Name</label>
+                    <input
+                      className={styles.detailInput}
+                      value={openaiModel}
+                      onChange={(e) => setOpenaiModel(e.target.value)}
+                      onBlur={() => updateSettings({ openai_model: openaiModel })}
+                      placeholder="gpt-4o"
+                    />
+                  </div>
+                </>
+              )}
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                Author Name
-              </label>
-              <input 
-                type="text" 
-                placeholder="e.g. Dr. Lab Researcher" 
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
-                onBlur={() => updateSettings({ author })}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  background: 'var(--bg-card)',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'inherit'
-                }}
-              />
+              {llmProvider === 'anthropic' && (
+                <>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Anthropic API Key</label>
+                    <input
+                      type="password"
+                      className={styles.detailInput}
+                      value={anthropicApiKey}
+                      onChange={(e) => setAnthropicApiKey(e.target.value)}
+                      onBlur={() => updateSettings({ anthropic_api_key: anthropicApiKey })}
+                      placeholder="sk-ant-..."
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Model Name</label>
+                    <input
+                      className={styles.detailInput}
+                      value={anthropicModel}
+                      onChange={(e) => setAnthropicModel(e.target.value)}
+                      onBlur={() => updateSettings({ anthropic_model: anthropicModel })}
+                      placeholder="claude-3-5-sonnet-20240620"
+                    />
+                  </div>
+                </>
+              )}
+
+              {llmProvider === 'gemini' && (
+                <>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Gemini API Key</label>
+                    <input
+                      type="password"
+                      className={styles.detailInput}
+                      value={geminiApiKey}
+                      onChange={(e) => setGeminiApiKey(e.target.value)}
+                      onBlur={() => updateSettings({ gemini_api_key: geminiApiKey })}
+                      placeholder="AIza..."
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Model Name</label>
+                    <input
+                      className={styles.detailInput}
+                      value={geminiModel}
+                      onChange={(e) => setGeminiModel(e.target.value)}
+                      onBlur={() => updateSettings({ gemini_model: geminiModel })}
+                      placeholder="gemini-1.5-pro"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div style={{ marginBottom: '1.25rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Researcher Settings</label>
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Author Name</label>
+                <input
+                  className={styles.detailInput}
+                  value={author}
+                  onChange={(e) => setAuthor(e.target.value)}
+                  onBlur={() => updateSettings({ author })}
+                  placeholder="Dr. Researcher"
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Project Persona</label>
+                <input
+                  className={styles.detailInput}
+                  value={mentorPersona}
+                  onChange={(e) => setMentorPersona(e.target.value)}
+                  onBlur={() => updateSettings({ mentor_persona: mentorPersona })}
+                  placeholder="e.g. PI in physics"
+                />
+              </div>
             </div>
 
             <div className={styles.modalActions}>
-              <button className={styles.cancelBtn} onClick={() => setIsSettingsOpen(false)}>
-                Close
-              </button>
+              <button className={styles.saveBtn} onClick={() => setIsSettingsOpen(false)}>Done</button>
             </div>
           </div>
         </div>
       )}
-
-      {renderDashboard()}
     </div>
   );
 }
