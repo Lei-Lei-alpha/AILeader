@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(python3 -c \"import sys,json; s=json.load\\(sys.stdin\\); print\\('\\\\n'.join\\(s.get\\('folders',[]\\)\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; s=json.load\\(sys.stdin\\); print\\('\\\\n'.join\\(s.get\\('folders',[]\\)\\)\\)\")",
+      "Bash(npx next *)"
     ]
   }
 }

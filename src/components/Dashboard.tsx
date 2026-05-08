@@ -12,10 +12,15 @@ import {
   RotateCcw,
   Timer,
   RefreshCw,
+  GitBranch,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import styles from '@/app/page.module.css';
 
-import type { DashboardTask } from '@/lib/types';
+import type { DashboardTask, ProjectMeta, ResearchStage } from '@/lib/types';
+import { RESEARCH_STAGES, STAGE_LABELS } from '@/lib/types';
 
 interface DashboardProps {
   folders: string[];
@@ -25,7 +30,8 @@ interface DashboardProps {
 export default function Dashboard({ folders, onClose }: DashboardProps) {
   const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [view, setView] = useState<'gantt' | 'calendar' | 'todo'>('gantt');
+  const [view, setView] = useState<'gantt' | 'calendar' | 'todo' | 'projects'>('gantt');
+  const [projectMetas, setProjectMetas] = useState<(ProjectMeta | null)[]>([]);
   const [togglingTasks, setTogglingTasks] = useState<Record<number, boolean>>({});
 
   const [pomodoroMode, setPomodoroMode] = useState<'focus' | 'break'>('focus');
@@ -36,7 +42,18 @@ export default function Dashboard({ folders, onClose }: DashboardProps) {
 
   useEffect(() => {
     loadTasks(false);
+    loadProjectMetas();
   }, []);
+
+  const loadProjectMetas = async () => {
+    const results = await Promise.allSettled(
+      folders.map((f) =>
+        fetch(`/api/research/meta?folder=${encodeURIComponent(f)}`)
+          .then((r) => r.ok ? r.json() : null)
+      )
+    );
+    setProjectMetas(results.map((r) => (r.status === 'fulfilled' ? r.value : null)));
+  };
 
   useEffect(() => {
     if (!isPomodoroActive) return;
@@ -183,6 +200,12 @@ export default function Dashboard({ folders, onClose }: DashboardProps) {
             >
               <CheckSquare size={16} /> Global To-Do List
             </button>
+            <button
+              className={`${styles.dashboardFilterBtn} ${view === 'projects' ? styles.active : ''}`}
+              onClick={() => setView('projects')}
+            >
+              <GitBranch size={16} /> Projects Overview
+            </button>
           </div>
 
           <div className={styles.dashboardContent}>
@@ -205,6 +228,8 @@ export default function Dashboard({ folders, onClose }: DashboardProps) {
                 onTogglePomodoro={() => setIsPomodoroActive((a) => !a)}
                 onResetPomodoro={() => { setIsPomodoroActive(false); setPomodoroTimeLeft(pomodoroMode === 'focus' ? 25 * 60 : 5 * 60); }}
               />
+            ) : view === 'projects' ? (
+              <ProjectsOverview folders={folders} metas={projectMetas} />
             ) : (
               <CalendarView tasks={tasks} today={today} />
             )}
@@ -335,6 +360,183 @@ function TodoView({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ProjectsOverview({ folders, metas }: { folders: string[]; metas: (ProjectMeta | null)[] }) {
+  const today = new Date();
+
+  const stageColor: Record<ResearchStage, string> = {
+    idea: '#6b7280',
+    literature_review: '#3b82f6',
+    methodology: '#8b5cf6',
+    experiments: '#f59e0b',
+    writing: '#10b981',
+    submission: '#06b6d4',
+    revision: '#f97316',
+    published: '#22c55e',
+  };
+
+  const overallStats = metas.reduce(
+    (acc, m) => {
+      if (!m) return acc;
+      acc.milestones += m.milestones.length;
+      acc.done += m.milestones.filter((ms) => ms.status === 'completed').length;
+      acc.goals += m.smartGoals.length;
+      acc.goalsDone += m.smartGoals.filter((g) => g.status === 'done').length;
+      acc.targets += m.publicationTargets.length;
+      return acc;
+    },
+    { milestones: 0, done: 0, goals: 0, goalsDone: 0, targets: 0 }
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', height: '100%' }}>
+      {/* Summary strip */}
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+        {[
+          { label: 'Projects', value: folders.length, color: 'var(--accent-base)' },
+          { label: 'Milestones', value: `${overallStats.done}/${overallStats.milestones}`, color: '#10b981' },
+          { label: 'SMART Goals', value: `${overallStats.goalsDone}/${overallStats.goals}`, color: '#f59e0b' },
+          { label: 'Pub Targets', value: overallStats.targets, color: '#3b82f6' },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{
+            flex: '1 1 120px', background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+            borderRadius: '8px', padding: '10px 14px', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color }}>{value}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-project cards */}
+      {folders.map((folder, idx) => {
+        const meta = metas[idx];
+        const name = folder.split(/[/\\]/).pop() || folder;
+        if (!meta) {
+          return (
+            <div key={folder} style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+              borderRadius: '8px', padding: '14px 16px', opacity: 0.5,
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: '4px' }}>{name}</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No project meta — index files to enable pipeline tracking.</div>
+            </div>
+          );
+        }
+
+        const stage = meta.project.stage;
+        const stageIdx = RESEARCH_STAGES.indexOf(stage);
+        const stagePct = Math.round(((stageIdx + 1) / RESEARCH_STAGES.length) * 100);
+
+        const completedMilestones = meta.milestones.filter((m) => m.status === 'completed').length;
+        const totalMilestones = meta.milestones.length;
+
+        const upcoming = meta.milestones
+          .filter((m) => m.status !== 'completed' && m.dueDate)
+          .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+          .slice(0, 3);
+
+        const overdueCount = meta.milestones.filter((m) => {
+          if (m.status === 'completed') return false;
+          return new Date(m.dueDate) < today;
+        }).length;
+
+        return (
+          <div key={folder} style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+            borderRadius: '10px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px',
+          }}>
+            {/* Project header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', flex: 1 }}>{meta.project.displayName || name}</div>
+              {overdueCount > 0 && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: '10px' }}>
+                  <AlertCircle size={11} /> {overdueCount} overdue
+                </span>
+              )}
+              <span style={{
+                fontSize: '0.7rem', padding: '2px 10px', borderRadius: '10px', fontWeight: 600,
+                background: `${stageColor[stage]}20`, color: stageColor[stage],
+              }}>
+                {STAGE_LABELS[stage]}
+              </span>
+            </div>
+
+            {/* Stage progress track */}
+            <div>
+              <div style={{ display: 'flex', marginBottom: '4px' }}>
+                {RESEARCH_STAGES.map((s, i) => {
+                  const isDone = i < stageIdx;
+                  const isCurr = s === stage;
+                  return (
+                    <div
+                      key={s}
+                      title={STAGE_LABELS[s]}
+                      style={{
+                        flex: 1, height: '6px', borderRadius: i === 0 ? '3px 0 0 3px' : i === RESEARCH_STAGES.length - 1 ? '0 3px 3px 0' : '0',
+                        background: isDone ? '#10b981' : isCurr ? stageColor[stage] : 'rgba(255,255,255,0.08)',
+                        transition: 'background 0.2s',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                Stage {stageIdx + 1}/8 · {stagePct}% through pipeline
+                {totalMilestones > 0 && ` · ${completedMilestones}/${totalMilestones} milestones done`}
+              </div>
+            </div>
+
+            {/* Upcoming milestones */}
+            {upcoming.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
+                  Upcoming
+                </div>
+                {upcoming.map((m) => {
+                  const due = new Date(m.dueDate);
+                  const isOverdue = due < today;
+                  const daysLeft = Math.round((due.getTime() - today.getTime()) / 86400000);
+                  return (
+                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem' }}>
+                      <div style={{ color: isOverdue ? '#ef4444' : m.status === 'in_progress' ? '#f59e0b' : 'var(--text-muted)', flexShrink: 0 }}>
+                        {m.status === 'completed' ? <CheckCircle2 size={12} /> : m.status === 'in_progress' ? <Clock size={12} /> : <AlertCircle size={12} />}
+                      </div>
+                      <span style={{ flex: 1, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</span>
+                      <span style={{ fontSize: '0.68rem', color: isOverdue ? '#ef4444' : 'var(--text-muted)', flexShrink: 0 }}>
+                        {isOverdue ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? 'today' : `${daysLeft}d`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Publication targets */}
+            {meta.publicationTargets.length > 0 && (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {meta.publicationTargets.map((t) => (
+                  <span key={t.id} style={{
+                    fontSize: '0.65rem', padding: '2px 8px', borderRadius: '10px', border: '1px solid var(--border-color)',
+                    color: 'var(--text-muted)', background: 'var(--bg-elevated)',
+                  }}>
+                    {t.targetVenue} · {t.status.replace('_', ' ')}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {folders.length === 0 && (
+        <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '40px' }}>
+          No folders registered. Add folders from the sidebar.
+        </div>
+      )}
     </div>
   );
 }

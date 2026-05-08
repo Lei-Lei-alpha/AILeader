@@ -5,7 +5,7 @@ import { search } from 'duck-duck-scrape';
 import { getSettings } from '@/lib/settings';
 import { readProjectMeta } from '@/lib/projectMeta';
 import { chat } from '@/lib/universalLLM';
-import type { MentorChatMode, LLMMessage } from '@/lib/types';
+import type { MentorChatMode } from '@/lib/types';
 
 export async function POST(request: Request) {
   try {
@@ -83,7 +83,21 @@ export async function POST(request: Request) {
     }
 
     const mentorPersona = settings.mentor_persona ? `\n\nAdditional Mentor Context: The researcher is working in the field of ${settings.mentor_persona}.` : "";
-    const injectedSystemPrompt = `${systemPrompt}${mentorPersona}${searchContext}${projectContext}${fileIndexContext}${noteContext}`;
+
+    // 5. Skills Context
+    let skillsContext = "";
+    try {
+      const skillsDir = path.join(process.cwd(), '.skills');
+      const skillFiles = await fs.readdir(skillsDir);
+      for (const file of skillFiles) {
+        if (file.endsWith('.md')) {
+          const content = await fs.readFile(path.join(skillsDir, file), 'utf8');
+          skillsContext += `\n\n=== TOOL/SKILL: ${file.replace('.md', '')} ===\n${content}`;
+        }
+      }
+    } catch { /* ignore */ }
+
+    const injectedSystemPrompt = `${systemPrompt}${mentorPersona}${searchContext}${projectContext}${fileIndexContext}${noteContext}${skillsContext}`;
 
     // Automatically detect `/figures/...` in messages and inject base64
     for (const msg of messages) {

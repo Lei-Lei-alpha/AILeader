@@ -12,6 +12,7 @@ import {
   Calendar,
   Menu,
   GitBranch,
+  Music2,
 } from 'lucide-react';
 import styles from './page.module.css';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
@@ -21,6 +22,7 @@ import MentorChatPanel from '@/components/MentorChatPanel';
 import Dashboard from '@/components/Dashboard';
 import FileIndexStatus from '@/components/FileIndexStatus';
 import ResearchPipelineView from '@/components/ResearchPipelineView';
+import PaperOrchestraPanel from '@/components/PaperOrchestraPanel';
 import NotificationBell from '@/components/NotificationBell';
 import type { Note, ChatMessage, CalendarTask, ProjectMeta, MentorChatMode, LLMProvider, AppSettings } from '@/lib/types';
 
@@ -56,6 +58,8 @@ export default function Home() {
   const [anthropicModel, setAnthropicModel] = useState('');
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiModel, setGeminiModel] = useState('');
+  const [skyworkApiKey, setSkyworkApiKey] = useState('');
+  const [skyworkGatewayUrl, setSkyworkGatewayUrl] = useState('');
   const [mentorPersona, setMentorPersona] = useState('');
   const [settingsLoading, setSettingsLoading] = useState(false);
 
@@ -84,6 +88,11 @@ export default function Home() {
 
   // ── Phase 3: pipeline ─────────────────────────────────────────────────────
   const [isPipelineOpen, setIsPipelineOpen] = useState(false);
+  const [pipelineFolder, setPipelineFolder] = useState<string>('');
+
+  // ── PaperOrchestra ────────────────────────────────────────────────────────
+  const [isPaperOrchestraOpen, setIsPaperOrchestraOpen] = useState(false);
+  const [paperOrchestraFolder, setPaperOrchestraFolder] = useState('');
 
   // ── Boot ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -98,10 +107,31 @@ export default function Home() {
     const contentInterval = setInterval(() => {
       if (activeNoteRef.current) pollActiveContent(activeNoteRef.current);
     }, 1000);
+    // Auto re-index: check active project folder for changed files every 90 seconds
+    const reindexInterval = setInterval(async () => {
+      const folder = activeNoteRef.current?.folder;
+      if (!folder) return;
+      try {
+        const res = await fetch(`/api/research/check_changes?folder=${encodeURIComponent(folder)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.needsReindex) {
+          // Silently re-index without showing the indexing spinner
+          await fetch('/api/research/index', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder }),
+          });
+          const metaRes = await fetch(`/api/research/meta?folder=${encodeURIComponent(folder)}`);
+          if (metaRes.ok) setActiveProjectMeta(await metaRes.json());
+        }
+      } catch { /* ignore background polling errors */ }
+    }, 90000);
 
     return () => {
       clearInterval(listInterval);
       clearInterval(contentInterval);
+      clearInterval(reindexInterval);
     };
   }, []);
 
@@ -155,6 +185,8 @@ export default function Home() {
       setAnthropicModel(data.anthropic_model || 'claude-3-5-sonnet-20240620');
       setGeminiApiKey(data.gemini_api_key || '');
       setGeminiModel(data.gemini_model || 'gemini-1.5-pro');
+      setSkyworkApiKey(data.skywork_api_key || '');
+      setSkyworkGatewayUrl(data.skywork_gateway_url || 'https://office.skywork.ai/api/v1');
       setMentorPersona(data.mentor_persona || '');
       if (data.author) setAuthor(data.author);
     } catch (e) {
@@ -182,6 +214,8 @@ export default function Home() {
         setAnthropicModel(data.anthropic_model || 'claude-3-5-sonnet-20240620');
         setGeminiApiKey(data.gemini_api_key || '');
         setGeminiModel(data.gemini_model || 'gemini-1.5-pro');
+        setSkyworkApiKey(data.skywork_api_key || '');
+        setSkyworkGatewayUrl(data.skywork_gateway_url || 'https://office.skywork.ai/api/v1');
         setMentorPersona(data.mentor_persona || '');
         if (data.author) setAuthor(data.author);
       }
@@ -425,6 +459,11 @@ export default function Home() {
         onAIPlan={(f) => { setPlanFolder(f); setIsPlanModalOpen(true); }}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onIndexFolder={handleIndexFolder}
+        onOpenPipeline={async (folder) => {
+          await loadProjectMeta(folder);
+          setPipelineFolder(folder);
+          setIsPipelineOpen(true);
+        }}
       />
 
       <main className={styles.main}>
@@ -477,13 +516,22 @@ export default function Home() {
                       >
                         <Sparkles size={16} /> Summarize
                       </button>
-                      {activeProjectMeta && (
+                      {activeProjectMeta && activeNote && (
                         <button
                           className={styles.editBtn}
-                          onClick={() => setIsPipelineOpen(true)}
+                          onClick={() => { setPipelineFolder(activeNote.folder); setIsPipelineOpen(true); }}
                           style={{ backgroundColor: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}
                         >
                           <GitBranch size={16} /> Pipeline
+                        </button>
+                      )}
+                      {activeProjectMeta && activeNote && (
+                        <button
+                          className={styles.editBtn}
+                          onClick={() => { setPaperOrchestraFolder(activeNote.folder); setIsPaperOrchestraOpen(true); }}
+                          style={{ backgroundColor: 'rgba(139,92,246,0.1)', color: 'var(--accent-base)', border: '1px solid rgba(139,92,246,0.25)' }}
+                        >
+                          <Music2 size={16} /> PaperOrchestra
                         </button>
                       )}
                     </div>
@@ -570,9 +618,9 @@ export default function Home() {
       )}
 
       {/* Research Pipeline */}
-      {isPipelineOpen && activeProjectMeta && activeNote && (
+      {isPipelineOpen && activeProjectMeta && pipelineFolder && (
         <ResearchPipelineView
-          folder={activeNote.folder}
+          folder={pipelineFolder}
           meta={activeProjectMeta}
           onClose={() => setIsPipelineOpen(false)}
           onMetaChange={(updated) => setActiveProjectMeta(updated)}
@@ -581,6 +629,21 @@ export default function Home() {
             setIsSummaryOpen(true);
             setIsPipelineOpen(false);
           }}
+          onOpenOrchestra={() => {
+            setPaperOrchestraFolder(pipelineFolder);
+            setIsPipelineOpen(false);
+            setIsPaperOrchestraOpen(true);
+          }}
+        />
+      )}
+
+      {/* PaperOrchestra */}
+      {isPaperOrchestraOpen && paperOrchestraFolder && (
+        <PaperOrchestraPanel
+          folder={paperOrchestraFolder}
+          projectName={activeProjectMeta?.project?.displayName || paperOrchestraFolder.split(/[/\\]/).pop() || 'Project'}
+          onClose={() => setIsPaperOrchestraOpen(false)}
+          onNoteSaved={fetchNotes}
         />
       )}
 
@@ -775,6 +838,33 @@ export default function Home() {
                   </div>
                 </>
               )}
+
+              <div style={{ marginBottom: '1.25rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Skywork Skills (Experimental)</label>
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Skywork API Key</label>
+                <input
+                  type="password"
+                  className={styles.detailInput}
+                  value={skyworkApiKey}
+                  onChange={(e) => setSkyworkApiKey(e.target.value)}
+                  onBlur={() => updateSettings({ skywork_api_key: skyworkApiKey })}
+                  placeholder="Enter your key from skywork.ai"
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}>Gateway URL</label>
+                <input
+                  className={styles.detailInput}
+                  value={skyworkGatewayUrl}
+                  onChange={(e) => setSkyworkGatewayUrl(e.target.value)}
+                  onBlur={() => updateSettings({ skywork_gateway_url: skyworkGatewayUrl })}
+                  placeholder="https://office.skywork.ai/api/v1"
+                />
+              </div>
 
               <div style={{ marginBottom: '1.25rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Researcher Settings</label>

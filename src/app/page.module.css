@@ -1451,3 +1451,177 @@
 .pipelineGenerateBtn:hover:not(:disabled) {
   opacity: 0.9;
 }
+
+/* ── PaperOrchestra Overlay ────────────────────────────────────────────────── */
+
+.orchestraOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(6px);
+  z-index: 1100;
+  display: flex;
+  align-items: stretch;
+}
+
+.orchestraModal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: var(--bg-main);
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.orchestraHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.orchestraTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.orchestraBadge {
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(16,185,129,0.2));
+  color: var(--accent-base);
+  border: 1px solid rgba(139,92,246,0.25);
+}
+
+.orchestraBody {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.orchestraSidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 0;
+  overflow-y: auto;
+}
+
+.orchestraMain {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.orchestraPreview {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 0.92rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.orchestraPreview h1 { font-size: 1.4rem; color: var(--text-primary); margin-bottom: 0.5rem; line-height: 1.3; }
+.orchestraPreview h2 { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-top: 1.8rem; margin-bottom: 0.6rem; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; }
+.orchestraPreview h3 { font-size: 0.92rem; font-weight: 700; color: var(--text-secondary); margin-top: 1.2rem; }
+.orchestraPreview p { margin-bottom: 0.9rem; }
+.orchestraPreview strong { color: var(--text-primary); }
+.orchestraPreview hr { border-color: var(--border-color); margin: 1.5rem 0; }
+
+.orchestraFooter {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.orchestraSectionStep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+  cursor: default;
+}
+
+.orchestraSectionStepActive {
+  color: var(--accent-base);
+  border-left-color: var(--accent-base);
+  background: rgba(139,92,246,0.06);
+}
+
+.orchestraSectionStepDone {
+  color: #10b981;
+  border-left-color: #10b981;
+}
+
+.orchestraSectionDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.orchestraRunBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  background: linear-gradient(135deg, var(--accent-base), #10b981);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  letter-spacing: 0.01em;
+}
+
+.orchestraRunBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.orchestraRunBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+@keyframes writingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.writingIndicator {
+  animation: writingPulse 1.2s ease-in-out infinite;
+}

@@ -26,6 +26,8 @@ export async function POST(request: Request) {
     if (updates.anthropic_model !== undefined)      settings.anthropic_model = String(updates.anthropic_model).trim();
     if (updates.gemini_api_key !== undefined)        settings.gemini_api_key = String(updates.gemini_api_key).trim();
     if (updates.gemini_model !== undefined)          settings.gemini_model = String(updates.gemini_model).trim();
+    if (updates.skywork_api_key !== undefined)      settings.skywork_api_key = String(updates.skywork_api_key).trim();
+    if (updates.skywork_gateway_url !== undefined)  settings.skywork_gateway_url = String(updates.skywork_gateway_url).trim();
     if (updates.mentor_persona !== undefined)       settings.mentor_persona = String(updates.mentor_persona).trim();
 
     await saveSettings(settings);

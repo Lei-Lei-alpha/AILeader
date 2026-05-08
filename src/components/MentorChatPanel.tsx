@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   X, Sparkles, MessageCircle, GripVertical, Paperclip,
   Save, Send, Calendar, Database, ChevronDown, ChevronRight,
-  Download, FilePlus, BookOpen, Microscope, PenTool, GraduationCap
+  Download, FilePlus, BookOpen, Microscope, PenTool, GraduationCap, Loader, Search, Table
 } from 'lucide-react';
 import styles from '@/app/page.module.css';
 import MarkdownRenderer from './MarkdownRenderer';
@@ -63,6 +63,7 @@ export default function MentorChatPanel({
   const [isDocUploading, setIsDocUploading] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [savingMsgIdx, setSavingMsgIdx] = useState<number | null>(null);
+  const [skillExecution, setSkillExecution] = useState<Record<string, { status: 'loading' | 'success' | 'error'; message: string; result?: any; type: string }>>({});
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
@@ -71,7 +72,7 @@ export default function MentorChatPanel({
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+  }, [chatMessages, skillExecution]);
 
   const handleMouseDownResize = useCallback(
     (e: React.MouseEvent) => {
@@ -97,6 +98,35 @@ export default function MentorChatPanel({
     },
     [aiPanelWidth]
   );
+
+  const executeSkill = async (name: string, params: any) => {
+    const skillId = `${name}-${Date.now()}`;
+    const skillLabel = name.toUpperCase();
+    setSkillExecution(prev => ({ ...prev, [skillId]: { status: 'loading', message: `Generating ${skillLabel} file...`, type: name } }));
+
+    try {
+      const res = await fetch('/api/research/skills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name,
+          params, 
+          projectFolder: planFolder || activeNote?.folder 
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSkillExecution(prev => ({ ...prev, [skillId]: { ...prev[skillId], status: 'success', message: `${skillLabel} generated!`, result: data } }));
+        if (onNoteCreated) onNoteCreated();
+      } else {
+        const err = await res.json();
+        setSkillExecution(prev => ({ ...prev, [skillId]: { ...prev[skillId], status: 'error', message: `${skillLabel} failed: ${err.error || 'Unknown error'}` } }));
+      }
+    } catch (e) {
+      setSkillExecution(prev => ({ ...prev, [skillId]: { ...prev[skillId], status: 'error', message: `${skillLabel} connection error.` } }));
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() && !attachedDocsText) return;
@@ -126,10 +156,24 @@ export default function MentorChatPanel({
         }),
       });
       const data = await res.json();
+      const assistantMsgContent = res.ok ? data.message : `Error: ${data.error}`;
+      
       onMessagesChange((prev) => [
         ...prev,
-        { role: 'assistant', content: res.ok ? data.message : `Error: ${data.error}` },
+        { role: 'assistant', content: assistantMsgContent },
       ]);
+
+      // Check for multiple skill calls
+      const skillRegex = /<CALL_SKILL name="([^"]+)">([\s\S]*?)<\/CALL_SKILL>/g;
+      let match;
+      while ((match = skillRegex.exec(assistantMsgContent)) !== null) {
+        try {
+          const skillName = match[1];
+          const params = JSON.parse(match[2]);
+          executeSkill(skillName, params);
+        } catch (e) { console.error("Skill call parse error", e); }
+      }
+
     } catch {
       onMessagesChange((prev) => [
         ...prev,
@@ -288,15 +332,40 @@ export default function MentorChatPanel({
                     <div className={styles.aiChatRole}>{msg.role === 'user' ? 'You' : `${currentModeInfo.label} Mentor`}</div>
                     {msg.role === 'assistant' && (
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => handleDownload(msg.content)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}><Download size={12} /></button>
-                        <button onClick={() => handleSaveToNote(msg.content, i)} disabled={savingMsgIdx === i} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+                        <button onClick={() => handleDownload(msg.content)} title="Download as Markdown" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}><Download size={12} /></button>
+                        <button onClick={() => handleSaveToNote(msg.content, i)} disabled={savingMsgIdx === i} title="Save to Note" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
                           {savingMsgIdx === i ? <div className={styles.aiChatSpinner} style={{ width: 10, height: 10 }} /> : <FilePlus size={12} />}
                         </button>
                       </div>
                     )}
                   </div>
-                  <div className={styles.aiChatText}><MarkdownRenderer content={msg.content} /></div>
+                  <div className={styles.aiChatText}>
+                    <MarkdownRenderer content={msg.content.replace(/<CALL_SKILL[\s\S]*?\/CALL_SKILL>/g, '').trim()} />
+                  </div>
                   {msg.calendarTasks && msg.calendarTasks.length > 0 && <CalendarTaskButtons tasks={msg.calendarTasks} />}
+                </div>
+              ))}
+
+              {/* Skill Execution Status */}
+              {Object.entries(skillExecution).map(([id, skill]) => (
+                <div key={id} style={{
+                  padding: '12px', margin: '8px 0', borderRadius: '10px',
+                  background: skill.status === 'error' ? 'rgba(239,68,68,0.08)' : 'rgba(139,92,246,0.08)',
+                  border: `1px solid ${skill.status === 'error' ? 'rgba(239,68,68,0.2)' : 'rgba(139,92,246,0.2)'}`,
+                  fontSize: '0.8rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {skill.status === 'loading' && <Loader size={16} style={{ animation: 'spinAi 1s linear infinite', color: 'var(--accent-base)' }} />}
+                    {skill.status === 'success' && skill.type === 'search' && <Search size={16} style={{ color: '#10b981' }} />}
+                    {skill.status === 'success' && (skill.type === 'ppt' || skill.type === 'doc') && <FilePlus size={16} style={{ color: 'var(--accent-base)' }} />}
+                    {skill.status === 'success' && skill.type === 'excel' && <Table size={16} style={{ color: '#10b981' }} />}
+                    <span style={{ fontWeight: 500, color: skill.status === 'error' ? '#ef4444' : 'var(--text-primary)' }}>{skill.message}</span>
+                  </div>
+                  {skill.status === 'success' && skill.result?.localPath && (
+                    <div style={{ marginTop: '8px', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>File created: <strong>{skill.result.localPath.split(/[/\\]/).pop()}</strong></span>
+                    </div>
+                  )}
                 </div>
               ))}
               <div ref={chatEndRef} />

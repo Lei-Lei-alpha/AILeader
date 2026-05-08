@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   openai_model: 'gpt-4o',
   anthropic_model: 'claude-3-5-sonnet-20240620',
   gemini_model: 'gemini-1.5-pro',
+  skywork_gateway_url: 'https://office.skywork.ai/api/v1',
 };
 
 export async function getSettings(): Promise<AppSettings> {

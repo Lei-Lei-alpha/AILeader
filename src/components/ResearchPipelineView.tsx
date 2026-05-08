@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { X, Wand2, Loader, CheckCheck, Clock, AlertCircle, Circle, Plus } from 'lucide-react';
+import { X, Wand2, Loader, CheckCheck, Clock, AlertCircle, Circle, Plus, Music2 } from 'lucide-react';
 import styles from '@/app/page.module.css';
 import MilestoneDetailPanel from './MilestoneDetailPanel';
 import GoalOutputManager from './GoalOutputManager';
@@ -16,6 +16,7 @@ interface ResearchPipelineViewProps {
   onClose: () => void;
   onMetaChange: (meta: ProjectMeta) => void;
   onOpenChat: (message: string) => void;
+  onOpenOrchestra?: () => void;
 }
 
 const STATUS_COLOR: Record<MilestoneStatus, string> = {
@@ -46,6 +47,7 @@ export default function ResearchPipelineView({
   onClose,
   onMetaChange,
   onOpenChat,
+  onOpenOrchestra,
 }: ResearchPipelineViewProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedMilestone, setSelectedMilestone] = useState<ResearchMilestone | null>(null);
@@ -206,6 +208,20 @@ export default function ResearchPipelineView({
               : <Wand2 size={14} />}
             {isGenerating ? 'Generating…' : 'Generate Pipeline'}
           </button>
+          {onOpenOrchestra && (
+            <button
+              onClick={onOpenOrchestra}
+              title="Write paper with PaperOrchestra"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '7px 14px', borderRadius: '7px', border: '1px solid rgba(139,92,246,0.3)',
+                background: 'rgba(139,92,246,0.1)', color: 'var(--accent-base)',
+                cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+              }}
+            >
+              <Music2 size={14} /> PaperOrchestra
+            </button>
+          )}
           <button
             onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px' }}

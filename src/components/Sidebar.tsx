@@ -15,6 +15,7 @@ import {
   Telescope,
   Database,
   Loader,
+  GitBranch,
 } from 'lucide-react';
 import styles from '@/app/page.module.css';
 import type { Note } from '@/lib/types';
@@ -36,6 +37,7 @@ interface SidebarProps {
   onAIPlan: (folder: string) => void;
   onOpenSettings: () => void;
   onIndexFolder: (folder: string) => void;
+  onOpenPipeline: (folder: string) => void;
 }
 
 export default function Sidebar({
@@ -55,6 +57,7 @@ export default function Sidebar({
   onAIPlan,
   onOpenSettings,
   onIndexFolder,
+  onOpenPipeline,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Note[]>([]);
@@ -257,6 +260,15 @@ export default function Sidebar({
                           : <Database size={14} />
                         }
                       </button>
+                      {hasMeta && (
+                        <button
+                          onClick={() => onOpenPipeline(folder)}
+                          title="Open Research Pipeline"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#10b981' }}
+                        >
+                          <GitBranch size={14} />
+                        </button>
+                      )}
                       <button onClick={() => handleDeleteFolder(folder)} title="Remove Folder" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
                         <Trash2 size={14} />
                       </button>

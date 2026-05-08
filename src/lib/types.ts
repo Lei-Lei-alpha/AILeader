@@ -209,6 +209,8 @@ export interface AppSettings {
   anthropic_model?: string;
   gemini_api_key?: string;
   gemini_model?: string;
+  skywork_api_key?: string;
+  skywork_gateway_url?: string;
   mentor_persona?: string;
 }
 
